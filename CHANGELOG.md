@@ -9,6 +9,7 @@ and this project adheres to
 ### Added
 
 - 🔧(backend) settings CONVERSION_UPLOAD_ENABLED to control usage of docspec
+- ✨(backend) add a public_search API view to the Document viewset #2068
 
 ### Changed
 
