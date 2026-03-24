@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ImperativePanelHandle,
   Panel,
@@ -22,12 +23,15 @@ type ResizableLeftPanelProps = {
   maxPanelSizePx?: number;
 };
 
+const RESIZE_HANDLE_ID = 'left-panel-resize-handle';
+
 export const ResizableLeftPanel = ({
   leftPanel,
   children,
   minPanelSizePx = 300,
   maxPanelSizePx = 450,
 }: ResizableLeftPanelProps) => {
+  const { t } = useTranslation();
   const { isDesktop } = useResponsiveStore();
   const { isPanelOpen } = useLeftPanelStore();
   const ref = useRef<ImperativePanelHandle>(null);
@@ -96,6 +100,50 @@ export const ResizableLeftPanel = ({
     };
   }, [isDesktop]);
 
+  /**
+   * Workaround: NVDA does not enter focus mode for role="separator"
+   * intercepted by browse-mode navigation and never reach the handle.
+   * Changing the role to "slider" makes NVDA reliably switch to focus
+   * mode, restoring progressive keyboard resize with arrow keys.
+   */
+  useEffect(() => {
+    if (!isPanelOpen) {
+      return;
+    }
+    const handle = document.getElementById(RESIZE_HANDLE_ID);
+    if (!handle) {
+      return;
+    }
+
+    handle.setAttribute('role', 'slider');
+    handle.setAttribute('aria-orientation', 'vertical');
+    handle.setAttribute('aria-label', t('Resize sidebar'));
+
+    const updateValueText = () => {
+      const value = handle.getAttribute('aria-valuenow');
+      if (value) {
+        const widthPx = Math.round(
+          (parseFloat(value) / 100) * window.innerWidth,
+        );
+        handle.setAttribute(
+          'aria-valuetext',
+          t('Sidebar width: {{widthPx}} pixels', { widthPx }),
+        );
+      }
+    };
+    updateValueText();
+
+    const observer = new MutationObserver(updateValueText);
+    observer.observe(handle, {
+      attributes: true,
+      attributeFilter: ['aria-valuenow'],
+    });
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [isPanelOpen, t]);
+
   const handleResize = (sizePercent: number) => {
     const widthPx = (sizePercent / 100) * window.innerWidth;
     savedWidthPxRef.current = widthPx;
@@ -103,7 +151,7 @@ export const ResizableLeftPanel = ({
   };
 
   return (
-    <PanelGroup direction="horizontal">
+    <PanelGroup direction="horizontal" keyboardResizeBy={1}>
       <Panel
         ref={ref}
         className="--docs--resizable-left-panel"
@@ -132,6 +180,7 @@ export const ResizableLeftPanel = ({
       </Panel>
       {isPanelOpen && (
         <PanelResizeHandle
+          id={RESIZE_HANDLE_ID}
           style={{
             borderRightWidth: '1px',
             borderRightStyle: 'solid',

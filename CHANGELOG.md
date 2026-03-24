@@ -9,6 +9,7 @@ and this project adheres to
 ### Changed
 
 - 💄(frontend) improve comments highlights #1961
+  ♿️(frontend) fix sidebar resize handle for screen readers #2122
 
 ## [v4.8.3] - 2026-03-23
 
