@@ -1209,7 +1209,20 @@ class DocumentViewSet(
                 path__startswith=ancestor.path, depth=ancestor.depth + 1
             )
 
-        children = self.queryset.filter(children_clause, deleted_at__isnull=True)
+        # Include deleted documents owned by the user, if any.
+        if request.user.is_authenticated:
+            owned_document_ids = models.DocumentAccess.objects.filter(
+                user=user,
+                role=models.RoleChoices.OWNER,
+                document__deleted_at__isnull=False,
+            ).values("document_id")
+
+            children = self.queryset.filter(
+                children_clause,
+                db.Q(deleted_at__isnull=True) | db.Q(id__in=owned_document_ids),
+            )
+        else:
+            children = self.queryset.filter(children_clause, deleted_at__isnull=True)
 
         queryset = (
             ancestors.select_related("creator").filter(

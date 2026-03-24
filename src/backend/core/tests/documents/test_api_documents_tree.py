@@ -1258,3 +1258,58 @@ def test_api_documents_tree_list_deleted_document_owner(django_assert_num_querie
     assert content["children"][0][
         "deleted_at"
     ] == child.ancestors_deleted_at.isoformat().replace("+00:00", "Z")
+
+
+def test_api_documents_tree_deleted_child_visible_to_owner():
+    """
+    A deleted child document should appear in the tree for users who are its direct owner,
+    even when they are not the owner of the parent.
+    """
+    user = factories.UserFactory()
+    client = APIClient()
+    client.force_login(user)
+
+    parent = factories.DocumentFactory(link_reach="public")
+    owned_child = factories.DocumentFactory(parent=parent, users=[(user, "owner")])
+    other_child = factories.DocumentFactory(parent=parent)
+
+    owned_child.soft_delete()
+    owned_child.refresh_from_db()
+
+    response = client.get(f"/api/v1.0/documents/{parent.id!s}/tree/")
+    assert response.status_code == 200
+
+    content = response.json()
+    child_ids = [c["id"] for c in content["children"]]
+    assert str(owned_child.id) in child_ids
+    assert str(other_child.id) in child_ids
+
+    owned_child_data = next(
+        c for c in content["children"] if c["id"] == str(owned_child.id)
+    )
+    assert owned_child_data["deleted_at"] == owned_child.deleted_at.isoformat().replace(
+        "+00:00", "Z"
+    )
+
+
+def test_api_documents_tree_deleted_child_hidden_from_non_owner():
+    """
+    A deleted child document should not appear in the tree for users who are not its owner.
+    """
+    user = factories.UserFactory()
+    client = APIClient()
+    client.force_login(user)
+
+    parent = factories.DocumentFactory(link_reach="public")
+    deleted_child = factories.DocumentFactory(parent=parent)
+    visible_child = factories.DocumentFactory(parent=parent)
+
+    deleted_child.soft_delete()
+
+    response = client.get(f"/api/v1.0/documents/{parent.id!s}/tree/")
+    assert response.status_code == 200
+
+    content = response.json()
+    child_ids = [c["id"] for c in content["children"]]
+    assert str(deleted_child.id) not in child_ids
+    assert str(visible_child.id) in child_ids

@@ -10,6 +10,10 @@ and this project adheres to
 
 - 💄(frontend) improve comments highlights #1961
 
+### Fixed
+
+- 🐛(backend) do not filter deleted documents for the owner in the tree #2121
+
 ## [v4.8.3] - 2026-03-23
 
 ### Changed
