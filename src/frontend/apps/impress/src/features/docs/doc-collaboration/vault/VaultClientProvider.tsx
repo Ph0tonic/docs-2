@@ -193,19 +193,39 @@ export function VaultClientProvider({
       return;
     }
 
-    // In Docs, auth is cookie-based. The vault in dev mode (no VITE_JWKS_URL)
-    // falls back to the declared userId. In production, pass a real JWT.
-    // TODO: Pass real ProConnect JWT when available.
-    client.setAuthContext({
-      token: 'session-cookie-auth',
-      userId: user.id,
-    });
+    let cancelled = false;
 
-    setIsLoading(true);
+    async function setupAuth() {
+      // Fetch the OIDC access token from the Django session.
+      // WARNING: This uses a temporary endpoint (get-access-token) — see the
+      // backend TODO for finding a better way to propagate the access token.
+      let token = user!.id; // fallback: userId (vault dev mode without JWKS)
 
-    client
-      .hasKeys()
-      .then(async ({ hasKeys: exists }) => {
+      try {
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_ORIGIN || ''}/api/v1.0/users/get-access-token/`,
+          { credentials: 'include' },
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+
+          if (data.access_token) {
+            token = data.access_token;
+          }
+        }
+      } catch {
+        // Endpoint not available — fall back to userId for dev mode
+      }
+
+      if (cancelled) return;
+
+      client.setAuthContext({ token, userId: user!.id });
+
+      setIsLoading(true);
+
+      try {
+        const { hasKeys: exists } = await client.hasKeys();
         setHasKeys(exists);
 
         if (exists) {
@@ -214,12 +234,18 @@ export function VaultClientProvider({
         }
 
         setIsReady(true);
-        setIsLoading(false);
-      })
-      .catch((err) => {
+      } catch (err) {
         setError((err as Error).message);
+      } finally {
         setIsLoading(false);
-      });
+      }
+    }
+
+    void setupAuth();
+
+    return () => {
+      cancelled = true;
+    };
   }, [clientInitialized, authenticated, user?.id]);
 
   const refreshKeyState = useCallback(async () => {

@@ -252,6 +252,35 @@ class UserViewSet(
             self.serializer_class(request.user, context=context).data
         )
 
+    @drf.decorators.action(
+        detail=False,
+        methods=["get"],
+        url_name="get-access-token",
+        url_path="get-access-token",
+        permission_classes=[permissions.IsAuthenticated],
+    )
+    def get_access_token(self, request):
+        """
+        WARNING: Temporary endpoint — to be removed.
+
+        TODO: Find a better way to propagate the OIDC access token to the frontend
+        so it can be passed to the VaultClient encryption library.
+        We should also consider having ProConnect flow directly on interface.encryption,
+        so it can obtain its own valid token when opened in a new tab (not as an iframe).
+
+        Returns the OIDC access token stored in the Django session.
+        Requires OIDC_STORE_ACCESS_TOKEN=True in settings.
+        """
+        access_token = request.session.get("oidc_access_token")
+
+        if not access_token:
+            return drf.response.Response(
+                {"detail": "No access token available in session."},
+                status=404,
+            )
+
+        return drf.response.Response({"access_token": access_token})
+
 
 class ResourceAccessViewsetMixin:
     """Mixin with methods common to all access viewsets."""

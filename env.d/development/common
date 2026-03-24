@@ -51,8 +51,8 @@ LOGOUT_REDIRECT_URL=http://localhost:3000
 OIDC_REDIRECT_ALLOWED_HOSTS="localhost:8083,localhost:3000"
 OIDC_AUTH_REQUEST_EXTRA_PARAMS={"acr_values": "eidas1"}
 
-# Store OIDC tokens in the session. Needed by search/ endpoint.
-# OIDC_STORE_ACCESS_TOKEN = True
+# Store OIDC tokens in the session. Needed by search/ endpoint and encryption service.
+OIDC_STORE_ACCESS_TOKEN = True
 # OIDC_STORE_REFRESH_TOKEN = True # Store the encrypted refresh token in the session.
 
 # Must be a valid Fernet key (32 url-safe base64-encoded bytes)
