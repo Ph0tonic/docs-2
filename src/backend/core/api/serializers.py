@@ -32,7 +32,7 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = models.User
-        fields = ["id", "email", "full_name", "short_name", "encryption_public_key", "language"]
+        fields = ["id", "email", "full_name", "short_name", "language"]
         read_only_fields = ["id", "email", "full_name", "short_name"]
 
     def get_full_name(self, instance):
@@ -71,7 +71,8 @@ class ListDocumentSerializer(serializers.ModelSerializer):
     user_role = serializers.SerializerMethodField(read_only=True)
     abilities = serializers.SerializerMethodField(read_only=True)
     deleted_at = serializers.SerializerMethodField(read_only=True)
-    accesses_public_keys_per_user = serializers.SerializerMethodField(read_only=True)
+    accesses_user_ids = serializers.SerializerMethodField(read_only=True)
+    accesses_fingerprints_per_user = serializers.SerializerMethodField(read_only=True)
     encrypted_document_symmetric_key_for_user = serializers.SerializerMethodField(
         read_only=True
     )
@@ -81,7 +82,8 @@ class ListDocumentSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "abilities",
-            "accesses_public_keys_per_user",
+            "accesses_fingerprints_per_user",
+            "accesses_user_ids",
             "ancestors_link_reach",
             "ancestors_link_role",
             "computed_link_reach",
@@ -107,7 +109,7 @@ class ListDocumentSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "id",
             "abilities",
-            "accesses_public_keys_per_user",
+            "accesses_user_ids",
             "ancestors_link_reach",
             "ancestors_link_role",
             "computed_link_reach",
@@ -162,12 +164,22 @@ class ListDocumentSerializer(serializers.ModelSerializer):
         """Return the deleted_at of the current document."""
         return instance.ancestors_deleted_at
 
-    def get_accesses_public_keys_per_user(self, instance):
-        """Return public keys of users with access, only for encrypted documents."""
+    def get_accesses_user_ids(self, instance):
+        """Return user IDs of members with access to this document.
+        The frontend uses these to fetch public keys from the encryption service."""
         request = self.context.get("request")
         if not request or not request.user.is_authenticated:
             return None
-        return instance.accesses_public_keys_per_user
+        return [str(uid) for uid in instance.accesses_user_ids]
+
+    def get_accesses_fingerprints_per_user(self, instance):
+        """Return fingerprints of users' public keys at share time."""
+        request = self.context.get("request")
+        if not request or not request.user.is_authenticated:
+            return None
+        if not instance.is_encrypted:
+            return None
+        return instance.accesses_fingerprints_per_user
 
     def get_encrypted_document_symmetric_key_for_user(self, instance):
         """Return the encrypted symmetric key for the current user."""
@@ -209,7 +221,8 @@ class DocumentSerializer(ListDocumentSerializer):
         fields = [
             "id",
             "abilities",
-            "accesses_public_keys_per_user",
+            "accesses_fingerprints_per_user",
+            "accesses_user_ids",
             "ancestors_link_reach",
             "ancestors_link_role",
             "computed_link_reach",
@@ -270,7 +283,7 @@ class DocumentSerializer(ListDocumentSerializer):
 
         # if user is not authenticated remove public keys information since he can still retrieve the document
         if request and not request.user.is_authenticated:
-            fields.pop("accesses_public_keys_per_user", None)
+            fields.pop("accesses_user_ids", None)
             fields.pop("encrypted_document_symmetric_key_for_user", None)
 
         return fields
@@ -399,6 +412,9 @@ class DocumentAccessSerializer(serializers.ModelSerializer):
     encrypted_document_symmetric_key_for_user = serializers.CharField(
         required=False, allow_blank=True, write_only=True
     )
+    encryption_public_key_fingerprint = serializers.CharField(
+        required=False, allow_blank=True, max_length=16
+    )
 
     class Meta:
         model = models.DocumentAccess
@@ -414,6 +430,7 @@ class DocumentAccessSerializer(serializers.ModelSerializer):
             "max_ancestors_role",
             "max_role",
             "encrypted_document_symmetric_key_for_user",
+            "encryption_public_key_fingerprint",
         ]
         read_only_fields = [
             "id",

@@ -10,7 +10,8 @@ import { toBase64 } from '@/features/docs/doc-editor';
 interface EncryptDocProps {
   docId: string;
   content: Uint8Array<ArrayBufferLike>;
-  encryptedSymmetricKeyPerUser: Record<string, ArrayBuffer>;
+  /** Per-user encrypted symmetric keys as base64 strings (from VaultClient.encryptForUsers) */
+  encryptedSymmetricKeyPerUser: Record<string, string>;
   attachmentKeyMapping?: Record<string, string>;
 }
 
@@ -18,22 +19,11 @@ export const encryptDoc = async ({
   docId,
   ...params
 }: EncryptDocProps): Promise<void> => {
-  const base64EncryptedSymmetricKeyPerUser: Record<string, string> = {};
-
-  for (const [userId, encryptedSymmetricKey] of Object.entries(
-    params.encryptedSymmetricKeyPerUser,
-  )) {
-    base64EncryptedSymmetricKeyPerUser[userId] = toBase64(
-      new Uint8Array(encryptedSymmetricKey),
-    );
-  }
-
   const response = await fetchAPI(`documents/${docId}/encrypt/`, {
     method: 'PATCH',
     body: JSON.stringify({
-      ...params,
       content: toBase64(params.content),
-      encryptedSymmetricKeyPerUser: base64EncryptedSymmetricKeyPerUser,
+      encryptedSymmetricKeyPerUser: params.encryptedSymmetricKeyPerUser,
       attachmentKeyMapping: params.attachmentKeyMapping || {},
     }),
   });

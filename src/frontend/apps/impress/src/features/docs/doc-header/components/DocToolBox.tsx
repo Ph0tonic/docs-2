@@ -35,6 +35,7 @@ import {
   usePublicKeyRegistry,
   useUserEncryption,
 } from '@/docs/doc-collaboration';
+import type { DocumentEncryptionSettings } from '@/docs/doc-collaboration/hook/useDocumentEncryption';
 import { DocShareModal } from '@/docs/doc-share';
 import {
   KEY_LIST_DOC_VERSIONS,
@@ -50,9 +51,7 @@ const ModalExport = Export?.ModalExport;
 
 interface DocToolBoxProps {
   doc: Doc;
-  documentEncryptionSettings?: {
-    documentSymmetricKey: CryptoKey;
-  } | null;
+  documentEncryptionSettings?: DocumentEncryptionSettings | null;
 }
 
 export const DocToolBox = ({
@@ -77,7 +76,7 @@ export const DocToolBox = ({
   const modalShare = useModal();
 
   const { hasMismatches: hasKeyWarnings } = usePublicKeyRegistry(
-    doc.is_encrypted ? doc.accesses_public_keys_per_user : undefined,
+    undefined,
     encryptionSettings?.userId,
   );
 
@@ -338,10 +337,10 @@ export const DocToolBox = ({
         />
       )}
       {isModalRemoveEncryptionOpen &&
-        documentEncryptionSettings?.documentSymmetricKey && (
+        documentEncryptionSettings?.encryptedSymmetricKey && (
           <ModalRemoveDocEncryption
             doc={doc}
-            symmetricKey={documentEncryptionSettings.documentSymmetricKey}
+            encryptedSymmetricKey={documentEncryptionSettings.encryptedSymmetricKey}
             onClose={() => setIsModalRemoveEncryptionOpen(false)}
           />
         )}

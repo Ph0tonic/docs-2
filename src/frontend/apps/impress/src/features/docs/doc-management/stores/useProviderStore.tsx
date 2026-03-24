@@ -27,7 +27,10 @@ export interface UseCollaborationStore {
     providerUrl: string,
     storeId: string,
     initialDocState?: Buffer<ArrayBuffer>,
-    symmetricKey?: CryptoKey,
+    encryptionOptions?: {
+      vaultClient: VaultClient;
+      encryptedSymmetricKey: ArrayBuffer;
+    },
   ) => SwitchableProvider;
   destroyProvider: () => void;
   notifyOthers: (event: EncryptionTransitionEvent) => void;
@@ -78,8 +81,8 @@ function handleEncryptionSystemMessage(
 
 export const useProviderStore = create<UseCollaborationStore>((set, get) => ({
   ...defaultValues,
-  createProvider: (wsUrl, storeId, initialDocState, encryptionSymmetricKey) => {
-    const isEncrypted = !!encryptionSymmetricKey;
+  createProvider: (wsUrl, storeId, initialDocState, encryptionOptions) => {
+    const isEncrypted = !!encryptionOptions;
 
     const doc = new Y.Doc({
       guid: storeId,
@@ -98,8 +101,8 @@ export const useProviderStore = create<UseCollaborationStore>((set, get) => ({
       //
 
       const AdaptedEncryptedWebSocket = createAdaptedEncryptedWebsocketClass({
-        encryptionKey: encryptionSymmetricKey,
-        decryptionKey: encryptionSymmetricKey,
+        vaultClient: encryptionOptions!.vaultClient,
+        encryptedSymmetricKey: encryptionOptions!.encryptedSymmetricKey,
         onSystemMessage: (message) => {
           if (message === 'system:authenticated') {
             set({ isReady: true, isConnected: true });

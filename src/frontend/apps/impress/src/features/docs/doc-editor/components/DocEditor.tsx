@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import { useEffect, useState } from 'react';
 
 import { Box, Loading } from '@/components';
+import { DocumentEncryptionSettings } from '@/docs/doc-collaboration/hook/useDocumentEncryption';
 import { DocHeader } from '@/docs/doc-header/';
 import {
   Doc,
@@ -76,9 +77,7 @@ export const DocEditorContainer = ({
 
 interface DocEditorProps {
   doc: Doc;
-  documentEncryptionSettings: {
-    documentSymmetricKey: CryptoKey;
-  } | null;
+  documentEncryptionSettings: DocumentEncryptionSettings | null;
 }
 
 export const DocEditor = ({

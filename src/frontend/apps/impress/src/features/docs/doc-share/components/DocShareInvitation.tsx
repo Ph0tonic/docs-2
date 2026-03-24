@@ -34,7 +34,6 @@ export const DocShareInvitationItem = ({
     full_name: invitation.email,
     email: invitation.email,
     short_name: invitation.email,
-    encryption_public_key: null,
     language: 'en-us',
   };
 

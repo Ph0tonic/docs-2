@@ -144,8 +144,7 @@ export const QuickSearchGroupMember = ({
         group={membersData}
         renderElement={(access) => {
           const hasMismatch = keyMismatchUserIds?.has(access.user.id);
-          const hasNoEncryptionKey =
-            doc.is_encrypted && !access.user.encryption_public_key;
+          const hasNoEncryptionKey = false;
 
           let suffix: string | undefined;
           if (hasMismatch) {
@@ -166,12 +165,7 @@ export const QuickSearchGroupMember = ({
                   ? () => setMismatchUserId(access.user.id)
                   : undefined
               }
-              fingerprintKey={
-                doc.is_encrypted
-                  ? (doc.accesses_public_keys_per_user?.[access.user.id] ??
-                    access.user.encryption_public_key)
-                  : undefined
-              }
+              fingerprintKey={undefined}
             />
           );
         }}

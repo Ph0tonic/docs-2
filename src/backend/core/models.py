@@ -186,12 +186,6 @@ class User(AbstractBaseUser, BaseModel, auth_models.PermissionsMixin):
         default=False,
         help_text=_("Whether the user can log into this admin site."),
     )
-    encryption_public_key = models.TextField(
-        _("encryption public key"),
-        null=True,
-        blank=True,
-        help_text=_("Public key for end-to-end encryption."),
-    )
     is_active = models.BooleanField(
         _("active"),
         default=True,
@@ -290,6 +284,17 @@ class BaseAccess(BaseModel):
         null=True,
         blank=True,
         help_text=_("Encrypted symmetric key for this document, specific to this user."),
+    )
+    encryption_public_key_fingerprint = models.CharField(
+        _("encryption public key fingerprint"),
+        max_length=16,
+        null=True,
+        blank=True,
+        help_text=_(
+            "Fingerprint of the user's public key at the time of sharing. "
+            "Used to detect key changes — if the user's current public key "
+            "fingerprint differs from this value, the access needs re-encryption."
+        ),
     )
 
     class Meta:
@@ -732,26 +737,36 @@ class Document(MP_Node, BaseModel):
         return self.computed_link_definition["link_role"]
 
     @property
-    def accesses_public_keys_per_user(self):
+    def accesses_user_ids(self):
         """
-        Return public keys of users with access to this document.
-        Returns a dictionary mapping user IDs to their encryption public keys.
-        Available for all documents so that encryption can be initiated
-        on non-encrypted documents too.
+        Return the list of user IDs with access to this document.
+        The frontend uses these IDs to fetch public keys from the
+        centralized encryption service.
         """
-        # Get all users with direct access to this document
-        users_with_access = (
+        return list(
             DocumentAccess.objects
             .filter(document=self, user__isnull=False)
-            .select_related('user')
-            .values_list('user_id', 'user__encryption_public_key')
+            .values_list('user_id', flat=True)
+            .distinct()
         )
 
-        # Convert to dictionary: {user_id: public_key}
+    @property
+    def accesses_fingerprints_per_user(self):
+        """
+        Return the fingerprint of each user's public key at the time of sharing.
+        This allows the frontend to detect key changes by comparing the
+        fingerprint stored at share time with the current public key fingerprint.
+        """
+        accesses = (
+            DocumentAccess.objects
+            .filter(document=self, user__isnull=False, encryption_public_key_fingerprint__isnull=False)
+            .values_list('user_id', 'encryption_public_key_fingerprint')
+        )
+
         return {
-            str(user_id): public_key
-            for user_id, public_key in users_with_access
-            if public_key  # Only include users with public keys
+            str(user_id): fingerprint
+            for user_id, fingerprint in accesses
+            if fingerprint
         }
 
     def get_abilities(self, user):

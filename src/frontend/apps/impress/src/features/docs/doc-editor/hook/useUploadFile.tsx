@@ -4,7 +4,7 @@ import { useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { backendUrl } from '@/api';
-import { encryptContent } from '@/docs/doc-collaboration/encryption';
+import { useVaultClient } from '@/features/docs/doc-collaboration/vault';
 
 import { useCreateDocAttachment } from '../api';
 import { ANALYZE_URL } from '../conf';
@@ -12,25 +12,28 @@ import { DocsBlockNoteEditor } from '../types';
 
 export const useUploadFile = (
   docId: string,
-  symmetricKey?: CryptoKey,
+  encryptedSymmetricKey?: ArrayBuffer,
 ) => {
   const {
     mutateAsync: createDocAttachment,
     isError: isErrorAttachment,
     error: errorAttachment,
   } = useCreateDocAttachment();
+  const { client: vaultClient } = useVaultClient();
 
   const uploadFile = useCallback(
     async (file: File) => {
       const body = new FormData();
 
-      if (symmetricKey) {
-        const arrayBuffer = await file.arrayBuffer();
-        const encryptedBytes = await encryptContent(
-          new Uint8Array(arrayBuffer),
-          symmetricKey,
+      if (encryptedSymmetricKey && vaultClient) {
+        // Encrypt the file via vault — pure ArrayBuffer
+        const fileBuffer = await file.arrayBuffer();
+        const { encryptedData } = await vaultClient.encryptWithKey(
+          fileBuffer,
+          encryptedSymmetricKey,
         );
-        const encryptedFile = new File([encryptedBytes], file.name, {
+
+        const encryptedFile = new File([encryptedData], file.name, {
           type: 'application/octet-stream',
         });
         body.append('file', encryptedFile);
@@ -46,7 +49,7 @@ export const useUploadFile = (
 
       return `${backendUrl()}${ret.file}`;
     },
-    [createDocAttachment, docId, symmetricKey],
+    [createDocAttachment, docId, encryptedSymmetricKey, vaultClient],
   );
 
   return {
@@ -60,16 +63,10 @@ export const useUploadFile = (
  * When we upload a file it can takes some time to analyze it (e.g. virus scan).
  * This hook listen to upload end and replace the uploaded block by a uploadLoader
  * block to show analyzing status.
- * The uploadLoader block will then handle the status display until the analysis is done
- * then replaced by the final block (e.g. image, pdf, etc.).
- * @param editor
  */
 export const useUploadStatus = (editor: DocsBlockNoteEditor) => {
   const { t } = useTranslation();
 
-  /**
-   * Replace the resource block by a uploadLoader block to show analyzing status
-   */
   const replaceBlockWithUploadLoader = useCallback(
     (block: Block) => {
       if (
@@ -113,7 +110,6 @@ export const useUploadStatus = (editor: DocsBlockNoteEditor) => {
   );
 
   useEffect(() => {
-    // Check if editor and its view are mounted before accessing document
     if (!editor?.document) {
       return;
     }
@@ -128,12 +124,7 @@ export const useUploadStatus = (editor: DocsBlockNoteEditor) => {
     });
   }, [editor, replaceBlockWithUploadLoader]);
 
-  /**
-   * Handle upload end to replace the upload block by a uploadLoader
-   * block to show analyzing status
-   */
   useEffect(() => {
-    // Check if editor and its view are mounted before setting up handlers
     if (!editor) {
       return;
     }

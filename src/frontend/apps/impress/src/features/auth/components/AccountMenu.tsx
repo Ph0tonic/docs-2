@@ -1,12 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { css } from 'styled-components';
 
 import { Box, DropdownMenu, DropdownMenuOption, Icon } from '@/components';
-import {
-  exportPublicKeyAsBase64,
-  useUserEncryption,
-} from '@/docs/doc-collaboration';
+import { useVaultClient } from '@/features/docs/doc-collaboration/vault';
 
 import { useAuth } from '../hooks';
 import { gotoLogout } from '../utils';
@@ -17,40 +14,19 @@ import { ModalEncryptionSettings } from './ModalEncryptionSettings';
 export const AccountMenu = () => {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const { encryptionSettings } = useUserEncryption();
+  const { hasKeys } = useVaultClient();
 
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [localPublicKeyBase64, setLocalPublicKeyBase64] = useState<
-    string | null
-  >(null);
 
-  useEffect(() => {
-    if (encryptionSettings?.userPublicKey) {
-      exportPublicKeyAsBase64(encryptionSettings.userPublicKey).then(
-        setLocalPublicKeyBase64,
-      );
-    } else {
-      setLocalPublicKeyBase64(null);
-    }
-  }, [encryptionSettings]);
-
-  const hasEncryptionSetup = !!user?.encryption_public_key;
-
-  const hasMismatch =
-    localPublicKeyBase64 !== null &&
-    user?.encryption_public_key !== null &&
-    localPublicKeyBase64 !== user?.encryption_public_key;
+  // hasKeys comes from the vault — true if the user has encryption keys on this device
+  const hasEncryptionSetup = hasKeys === true;
 
   const encryptionOption: DropdownMenuOption = useMemo(() => {
     if (hasEncryptionSetup) {
       return {
         label: t('Encryption settings'),
-        icon: hasMismatch ? (
-          <Icon iconName="warning" $size="20px" $theme="warning" />
-        ) : (
-          'lock'
-        ),
+        icon: 'lock',
         callback: () => setIsSettingsOpen(true),
         showSeparator: true,
       };
@@ -62,7 +38,7 @@ export const AccountMenu = () => {
       callback: () => setIsOnboardingOpen(true),
       showSeparator: true,
     };
-  }, [hasEncryptionSetup, hasMismatch, t]);
+  }, [hasEncryptionSetup, t]);
 
   const options: DropdownMenuOption[] = useMemo(
     () => [
@@ -70,7 +46,7 @@ export const AccountMenu = () => {
       {
         label: t('Logout'),
         icon: 'logout',
-        callback: gotoLogout,
+        callback: () => gotoLogout(),
       },
     ],
     [encryptionOption, t],
@@ -82,7 +58,6 @@ export const AccountMenu = () => {
         options={options}
         showArrow
         label={t('My account')}
-        testId="header-account-menu"
         buttonCss={css`
           transition: all var(--c--globals--transitions--duration)
             var(--c--globals--transitions--ease-out) !important;
@@ -91,6 +66,11 @@ export const AccountMenu = () => {
           & > div {
             gap: 0.2rem;
             display: flex;
+          }
+          & .material-icons {
+            color: var(
+              --c--contextuals--content--palette--brand--primary
+            ) !important;
           }
         `}
       >
@@ -101,26 +81,27 @@ export const AccountMenu = () => {
           $gap="0.5rem"
           $align="center"
         >
-          {hasMismatch && (
-            <Icon iconName="warning" $size="16px" $theme="warning" />
-          )}
+          <Icon iconName="person" $color="inherit" $size="xl" />
           {t('My account')}
         </Box>
       </DropdownMenu>
-
-      <ModalEncryptionOnboarding
-        isOpen={isOnboardingOpen}
-        onClose={() => setIsOnboardingOpen(false)}
-      />
-
-      <ModalEncryptionSettings
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        onRequestReOnboard={() => {
-          setIsSettingsOpen(false);
-          setIsOnboardingOpen(true);
-        }}
-      />
+      {user && isOnboardingOpen && (
+        <ModalEncryptionOnboarding
+          isOpen
+          onClose={() => setIsOnboardingOpen(false)}
+          onSuccess={() => setIsOnboardingOpen(false)}
+        />
+      )}
+      {user && isSettingsOpen && (
+        <ModalEncryptionSettings
+          isOpen
+          onClose={() => setIsSettingsOpen(false)}
+          onRequestReOnboard={() => {
+            setIsSettingsOpen(false);
+            setIsOnboardingOpen(true);
+          }}
+        />
+      )}
     </>
   );
 };

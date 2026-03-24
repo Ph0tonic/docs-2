@@ -1,13 +1,16 @@
-import type { MessageEvent } from 'ws';
+/**
+ * Encrypted WebSocket wrapper for real-time Yjs collaboration.
+ *
+ * Uses the VaultClient SDK for all encrypt/decrypt operations via postMessage
+ * to the vault iframe. All data transfers use ArrayBuffer for zero-copy
+ * performance. The vault caches the decrypted symmetric key per session
+ * so only the first message incurs the hybrid decapsulation cost.
+ */
 
-import {
-  decryptContent,
-  encryptContent,
-} from '@/docs/doc-collaboration/encryption';
 
 export class EncryptedWebSocket extends WebSocket {
-  protected readonly encryptionKey!: CryptoKey;
-  protected readonly decryptionKey!: CryptoKey;
+  protected readonly vaultClient!: VaultClient;
+  protected readonly encryptedSymmetricKey!: ArrayBuffer;
   protected readonly onSystemMessage?: (message: string) => void;
 
   constructor(address: string | URL, protocols?: string | string[]) {
@@ -25,39 +28,39 @@ export class EncryptedWebSocket extends WebSocket {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const messageEvent = event as any;
 
-          // some messages are here to help adjusting the interface or even reloading it
-          // in case it there is an ongoing decryption, or symmetric key rotation...
-          // those messages must be parsable so they are not encrypted
+          // System messages (strings) bypass encryption
           if (typeof messageEvent.data === 'string') {
             this.onSystemMessage?.(messageEvent.data as string);
 
             return;
           }
 
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           if (!(messageEvent.data instanceof ArrayBuffer)) {
             throw new Error(
-              `the data over the wire should always be ArrayBuffer since defined on the websocket property "binaryType"`,
+              'WebSocket data should always be ArrayBuffer (binaryType)',
             );
           }
 
-          const manageableData = new Uint8Array<ArrayBuffer>(
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-            messageEvent.data as ArrayBuffer,
-          );
+          try {
+            // Decrypt directly with ArrayBuffer — no base64 conversion
+            const { data: decryptedBuffer } =
+              await this.vaultClient.decryptWithKey(
+                messageEvent.data as ArrayBuffer,
+                this.encryptedSymmetricKey,
+              );
 
-          const decryptedData = await decryptContent(
-            manageableData,
-            this.decryptionKey,
-          );
+            const decryptedData = new Uint8Array(decryptedBuffer);
 
-          if (typeof listener === 'function') {
-            listener.call(this, { ...event, data: decryptedData });
-          } else {
-            listener.handleEvent.call(this, {
-              ...event,
-              data: decryptedData,
-            });
+            if (typeof listener === 'function') {
+              listener.call(this, { ...event, data: decryptedData });
+            } else {
+              listener.handleEvent.call(this, {
+                ...event,
+                data: decryptedData,
+              });
+            }
+          } catch (err) {
+            console.error('WebSocket decrypt error:', err);
           }
         };
 
@@ -67,11 +70,7 @@ export class EncryptedWebSocket extends WebSocket {
       }
     };
 
-    // In case it's added directly with `onmessage` and since we cannot override the setter of `onmessage`
-    // tweak a bit to intercept when setting it
-    // const base = Object.getPrototypeOf(this) as WebSocket;
-    // const baseDesc = Object.getOwnPropertyDescriptor(base, 'onmessage')!;
-
+    // Block direct onmessage assignment
     let explicitlySetListener: // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ((this: WebSocket, handlerEvent: MessageEvent) => any) | null;
     null;
@@ -80,8 +79,6 @@ export class EncryptedWebSocket extends WebSocket {
       configurable: true,
       enumerable: true,
       get() {
-        console.log('GETTING ONMESSAGE');
-
         return explicitlySetListener;
       },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars
@@ -89,64 +86,40 @@ export class EncryptedWebSocket extends WebSocket {
         explicitlySetListener = null;
 
         throw new Error(
-          `"onmessage" should not be set by "y-websocket", instead it should be patched to use "addEventListener" since we want to extend it to decrypt messages but "defineProperty" is not working on the instance, probably it should be done on the prototype but it would mess with other WebSocket usage. SO PLEASE RUN "yarn run patch-package"!`,
+          '"onmessage" should not be set directly. Use addEventListener instead. Run "yarn run patch-package"!',
         );
-
-        // if (!handler) {
-        //   explicitlySetListener = null;
-        //   return;
-        // }
-
-        // explicitlySetListener = function (
-        //   this: WebSocket,
-        //   event: MessageEvent,
-        // ) {
-        //   if (!(event.data instanceof ArrayBuffer)) {
-        //     throw new Error(
-        //       `the data over the wire should always be ArrayBuffer since defined on the websocket property "binaryType"`,
-        //     );
-        //   }
-
-        //   const manageableData = new Uint8Array(event.data);
-
-        //   return handler.call(this, { ...event, data: decrypt(manageableData) });
-        // };
       },
     });
   }
 
-  // allow sending raw message without encryption so they can be read
   sendSystemMessage(message: string) {
     super.send(message);
   }
 
   send(message: Uint8Array<ArrayBuffer>) {
-    // TODO: we use the polyfilled websocket parameter for `y-websocket` to bring our own encryption logic over the network
-    // that's great but encryption is preferable with async processes, we cannot just switch to async since
-    // it's used into the Yjs websocket provider.
-    //
-    // try like this since no return value is expected from here, but it will mess in case of error (unhandled exception...)
-    // if it does not fit our need, we will have to rewrite the Yjs websocket package to have the best async logic set up
-    encryptContent(message, this.encryptionKey)
-      .then((encryptedMessage) => {
-        super.send(encryptedMessage);
+    // Encrypt directly with ArrayBuffer — no base64 conversion
+    this.vaultClient
+      .encryptWithKey(
+        message.buffer as ArrayBuffer,
+        this.encryptedSymmetricKey,
+      )
+      .then(({ encryptedData }) => {
+        super.send(new Uint8Array(encryptedData));
       })
       .catch((error) => {
-        console.error(error);
-
-        return Promise.reject(error);
+        console.error('WebSocket encrypt error:', error);
       });
   }
 }
 
 export function createAdaptedEncryptedWebsocketClass(options: {
-  encryptionKey: CryptoKey;
-  decryptionKey: CryptoKey;
+  vaultClient: VaultClient;
+  encryptedSymmetricKey: ArrayBuffer;
   onSystemMessage?: (message: string) => void;
 }) {
   return class extends EncryptedWebSocket {
-    protected readonly encryptionKey = options.encryptionKey;
-    protected readonly decryptionKey = options.decryptionKey;
+    protected readonly vaultClient = options.vaultClient;
+    protected readonly encryptedSymmetricKey = options.encryptedSymmetricKey;
     protected readonly onSystemMessage = options.onSystemMessage;
   };
 }

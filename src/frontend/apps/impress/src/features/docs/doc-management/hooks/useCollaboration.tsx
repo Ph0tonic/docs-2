@@ -1,22 +1,22 @@
 import { useEffect } from 'react';
 
 import { useCollaborationUrl } from '@/core/config';
-import { decryptContent } from '@/docs/doc-collaboration/encryption';
+import { DocumentEncryptionSettings } from '@/docs/doc-collaboration/hook/useDocumentEncryption';
 import { Base64, useProviderStore } from '@/docs/doc-management';
 import { useAuth } from '@/features/auth';
+import { useVaultClient } from '@/features/docs/doc-collaboration/vault';
 import { useBroadcastStore } from '@/stores';
 
 export const useCollaboration = (
   room: string | undefined,
   initialContent: Base64 | undefined,
   isEncrypted: boolean | undefined,
-  documentEncryptionSettings: {
-    documentSymmetricKey: CryptoKey;
-  } | null,
+  documentEncryptionSettings: DocumentEncryptionSettings | null,
 ) => {
   const collaborationUrl = useCollaborationUrl(room);
   const { setBroadcastProvider, cleanupBroadcast } = useBroadcastStore();
   const { user } = useAuth();
+  const { client: vaultClient } = useVaultClient();
   const { provider, createProvider, destroyProvider, encryptionTransition } =
     useProviderStore();
 
@@ -27,63 +27,55 @@ export const useCollaboration = (
       !user ||
       isEncrypted === undefined ||
       (isEncrypted === true && !documentEncryptionSettings) ||
+      (isEncrypted === true && !vaultClient) ||
       provider ||
       encryptionTransition
     ) {
-      // TODO: make sure the logout would invalide this provider, also a change of local keys (after import...)
       return;
     }
 
-    // since that's initially binary it has been wrapped as base64 first
-    let initialDocState = initialContent
+    const initialDocState = initialContent
       ? Buffer.from(initialContent, 'base64')
       : undefined;
 
-    // if the document is marked as encrypted we need an extra decoding to retrieve the Yjs state
-    // note: we hack a bit due to decryption being async
-    let contentPromise: Promise<
-      [typeof initialDocState, CryptoKey | undefined]
-    >;
-
-    if (isEncrypted) {
-      contentPromise = (async () => {
-        if (!documentEncryptionSettings) {
-          throw new Error(
-            `"documentEncryptionSettings" must be filled since document is encrypted`,
-          );
-        }
+    if (isEncrypted && documentEncryptionSettings && vaultClient) {
+      (async () => {
+        let decryptedState = initialDocState;
 
         if (initialDocState) {
-          return [
-            Buffer.from(
-              await decryptContent(
-                initialDocState,
-                documentEncryptionSettings.documentSymmetricKey,
-              ),
-            ),
-            documentEncryptionSettings.documentSymmetricKey,
-          ];
-        } else {
-          return [
-            initialDocState,
-            documentEncryptionSettings.documentSymmetricKey,
-          ];
-        }
-      })();
-    } else {
-      contentPromise = Promise.resolve([initialDocState, undefined]);
-    }
+          // Decrypt initial document content via vault — pure ArrayBuffer
+          const { data: decryptedBuffer } = await vaultClient.decryptWithKey(
+            initialDocState.buffer as ArrayBuffer,
+            documentEncryptionSettings.encryptedSymmetricKey,
+          );
 
-    contentPromise.then(([initialDocState, symmetricKey]) => {
+          decryptedState = Buffer.from(decryptedBuffer);
+        }
+
+        const newProvider = createProvider(
+          collaborationUrl,
+          room,
+          decryptedState,
+          {
+            vaultClient,
+            encryptedSymmetricKey:
+              documentEncryptionSettings.encryptedSymmetricKey,
+          },
+        );
+
+        setBroadcastProvider(newProvider);
+      })().catch((err) => {
+        console.error('Failed to decrypt document content:', err);
+      });
+    } else {
       const newProvider = createProvider(
         collaborationUrl,
         room,
         initialDocState,
-        symmetricKey,
       );
 
       setBroadcastProvider(newProvider);
-    });
+    }
   }, [
     provider,
     collaborationUrl,
@@ -94,12 +86,10 @@ export const useCollaboration = (
     user,
     isEncrypted,
     documentEncryptionSettings,
+    vaultClient,
     encryptionTransition,
   ]);
 
-  /**
-   * Destroy the provider when the component is unmounted
-   */
   useEffect(() => {
     return () => {
       if (room) {

@@ -9,10 +9,11 @@ import { useTranslation } from 'react-i18next';
 import { APIError } from '@/api';
 import { Box, Card } from '@/components';
 import { useCunninghamTheme } from '@/cunningham';
-import { encryptSymmetricKey } from '@/docs/doc-collaboration';
-import { toBase64 } from '@/docs/doc-editor';
+import { toBase64 } from '@/features/docs/doc-editor';
+import type { DocumentEncryptionSettings } from '@/docs/doc-collaboration/hook/useDocumentEncryption';
 import { Doc, Role } from '@/docs/doc-management';
 import { User } from '@/features/auth';
+import { useVaultClient } from '@/features/docs/doc-collaboration/vault';
 
 import { useCreateDocAccess, useCreateDocInvitation } from '../api';
 import { OptionType } from '../types';
@@ -27,9 +28,7 @@ type APIErrorUser = APIError<{
 
 type Props = {
   doc: Doc;
-  documentEncryptionSettings: {
-    documentSymmetricKey: CryptoKey;
-  } | null;
+  documentEncryptionSettings: DocumentEncryptionSettings | null;
   selectedUsers: User[];
   onRemoveUser?: (user: User) => void;
   onSubmit?: (selectedUsers: User[], role: Role) => void;
@@ -44,6 +43,7 @@ export const DocShareAddMemberList = ({
 }: Props) => {
   const { t } = useTranslation();
   const { toast } = useToastProvider();
+  const { client: vaultClient } = useVaultClient();
 
   const [isLoading, setIsLoading] = useState(false);
   const { spacingsTokens } = useCunninghamTheme();
@@ -90,6 +90,20 @@ export const DocShareAddMemberList = ({
   const onInvite = async () => {
     setIsLoading(true);
 
+    // Fetch all public keys in a single request before processing users
+    let publicKeysMap: Record<string, ArrayBuffer> = {};
+
+    if (doc.is_encrypted && documentEncryptionSettings && vaultClient) {
+      const memberUserIds = selectedUsers
+        .filter((user) => user.id !== user.email)
+        .map((user) => user.id);
+
+      if (memberUserIds.length > 0) {
+        const { publicKeys } = await vaultClient.fetchPublicKeys(memberUserIds);
+        publicKeysMap = publicKeys;
+      }
+    }
+
     const promises = selectedUsers.map(async (user) => {
       const isInvitationMode = user.id === user.email;
 
@@ -123,33 +137,20 @@ export const DocShareAddMemberList = ({
         });
       }
 
-      // For encrypted docs, encrypt the symmetric key with the user's public key
+      // For encrypted docs, re-wrap the symmetric key for the new member via vault
       let memberEncryptedSymmetricKey: string | null = null;
 
-      if (
-        doc.is_encrypted &&
-        documentEncryptionSettings &&
-        user.encryption_public_key
-      ) {
-        const publicKeyBuffer = Uint8Array.from(
-          atob(user.encryption_public_key),
-          (c) => c.charCodeAt(0),
-        ).buffer;
+      if (doc.is_encrypted && documentEncryptionSettings && vaultClient) {
+        const userPublicKey = publicKeysMap[user.id];
 
-        const importedPublicKey = await crypto.subtle.importKey(
-          'spki',
-          publicKeyBuffer,
-          { name: 'RSA-OAEP', hash: 'SHA-256' },
-          true,
-          ['encrypt'],
-        );
+        if (userPublicKey) {
+          const { rewrappedKey } = await vaultClient.rewrapKey(
+            documentEncryptionSettings.encryptedSymmetricKey,
+            userPublicKey,
+          );
 
-        const encryptedKey = await encryptSymmetricKey(
-          documentEncryptionSettings.documentSymmetricKey,
-          importedPublicKey,
-        );
-
-        memberEncryptedSymmetricKey = toBase64(new Uint8Array(encryptedKey));
+          memberEncryptedSymmetricKey = toBase64(new Uint8Array(rewrappedKey));
+        }
       }
 
       return createDocAccess({

@@ -19,6 +19,7 @@ import type { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
 import { Box, TextErrors } from '@/components';
+import { DocumentEncryptionSettings } from '@/docs/doc-collaboration/hook/useDocumentEncryption';
 import { useCunninghamTheme } from '@/cunningham';
 import {
   Doc,
@@ -87,9 +88,7 @@ export const blockNoteSchema = (withMultiColumn?.(baseBlockNoteSchema) ||
 interface BlockNoteEditorProps {
   doc: Doc;
   provider: SwitchableProvider;
-  documentEncryptionSettings: {
-    documentSymmetricKey: CryptoKey;
-  } | null;
+  documentEncryptionSettings: DocumentEncryptionSettings | null;
 }
 
 export const BlockNoteEditor = ({
@@ -120,8 +119,8 @@ export const BlockNoteEditor = ({
     lang = 'en';
   }
 
-  const symmetricKey = documentEncryptionSettings?.documentSymmetricKey;
-  const { uploadFile, errorAttachment } = useUploadFile(doc.id, symmetricKey);
+  const encryptedSymmetricKey = documentEncryptionSettings?.encryptedSymmetricKey;
+  const { uploadFile, errorAttachment } = useUploadFile(doc.id, encryptedSymmetricKey);
 
   const collabName = user?.full_name || user?.email;
   const cursorName = collabName || t('Anonymous');
@@ -228,7 +227,7 @@ export const BlockNoteEditor = ({
       lang,
       provider,
       uploadFile,
-      symmetricKey,
+      encryptedSymmetricKey,
       threadStore,
       resolveUsers,
     ],
@@ -249,7 +248,7 @@ export const BlockNoteEditor = ({
   }, [setEditor, editor]);
 
   return (
-    <EncryptionProvider symmetricKey={symmetricKey}>
+    <EncryptionProvider encryptedSymmetricKey={encryptedSymmetricKey}>
       <EncryptedDocBanner />
       <Box
         ref={refEditorContainer}

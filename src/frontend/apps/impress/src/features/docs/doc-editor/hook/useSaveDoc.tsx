@@ -1,10 +1,11 @@
 import { useRouter } from 'next/router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import * as Y from 'yjs';
 
-import { encryptContent } from '@/docs/doc-collaboration/encryption';
+import { DocumentEncryptionSettings } from '@/docs/doc-collaboration/hook/useDocumentEncryption';
 import { useUpdateDoc, useProviderStore } from '@/docs/doc-management/';
 import { KEY_LIST_DOC_VERSIONS } from '@/docs/doc-versioning';
+import { useVaultClient } from '@/features/docs/doc-collaboration/vault';
 import { isFirefox } from '@/utils/userAgent';
 
 import { toBase64 } from '../utils';
@@ -16,11 +17,10 @@ export const useSaveDoc = (
   yDoc: Y.Doc,
   isConnectedToCollabServer: boolean,
   isEncrypted: boolean,
-  documentEncryptionSettings: {
-    documentSymmetricKey: CryptoKey;
-  } | null,
+  documentEncryptionSettings: DocumentEncryptionSettings | null,
 ) => {
   const { encryptionTransition } = useProviderStore();
+  const { client: vaultClient } = useVaultClient();
   const { mutate: updateDoc } = useUpdateDoc({
     listInvalidQueries: [KEY_LIST_DOC_VERSIONS],
     onSuccess: () => {
@@ -29,11 +29,6 @@ export const useSaveDoc = (
   });
   const [isLocalChange, setIsLocalChange] = useState<boolean>(false);
 
-  /**
-   * Update initial doc when doc is updated by other users,
-   * so only the user typing will trigger the save.
-   * This is to avoid saving the same doc multiple time.
-   */
   useEffect(() => {
     const onUpdate = (
       _uintArray: Uint8Array,
@@ -56,31 +51,38 @@ export const useSaveDoc = (
       return false;
     } else if (encryptionTransition) {
       return false;
-    } else if (isEncrypted && !documentEncryptionSettings) {
-      // If the symmetric key is not yet ready we just ignore saving (either it needs onboarding or just a few seconds)
+    } else if (isEncrypted && (!documentEncryptionSettings || !vaultClient)) {
       return false;
     }
 
-    let state = Y.encodeStateAsUpdate(yDoc);
-    let contentPromise: Promise<typeof state>;
+    const state = Y.encodeStateAsUpdate(yDoc);
 
-    if (isEncrypted) {
-      contentPromise = encryptContent(
-        new Uint8Array(state),
-        documentEncryptionSettings!.documentSymmetricKey,
-      );
+    if (isEncrypted && documentEncryptionSettings && vaultClient) {
+      // Encrypt via vault with ArrayBuffer — zero-copy
+      vaultClient
+        .encryptWithKey(
+          state.buffer as ArrayBuffer,
+          documentEncryptionSettings.encryptedSymmetricKey,
+        )
+        .then(({ encryptedData }) => {
+          updateDoc({
+            id: docId,
+            content: toBase64(new Uint8Array(encryptedData)),
+            contentEncrypted: true,
+            websocket: isConnectedToCollabServer,
+          });
+        })
+        .catch((err) => {
+          console.error('Failed to encrypt document for save:', err);
+        });
     } else {
-      contentPromise = Promise.resolve(state);
-    }
-
-    contentPromise.then((docState) => {
       updateDoc({
         id: docId,
-        content: toBase64(docState),
-        contentEncrypted: isEncrypted,
+        content: toBase64(state),
+        contentEncrypted: false,
         websocket: isConnectedToCollabServer,
       });
-    });
+    }
 
     return true;
   }, [
@@ -92,6 +94,7 @@ export const useSaveDoc = (
     isConnectedToCollabServer,
     isEncrypted,
     documentEncryptionSettings,
+    vaultClient,
   ]);
 
   const router = useRouter();
@@ -100,13 +103,6 @@ export const useSaveDoc = (
     const onSave = (e?: Event) => {
       const isSaving = saveDoc();
 
-      /**
-       * Firefox does not trigger the request every time the user leaves the page.
-       * Plus the request is not intercepted by the service worker.
-       * So we prevent the default behavior to have the popup asking the user
-       * if he wants to leave the page, by adding the popup, we let the time to the
-       * request to be sent, and intercepted by the service worker (for the offline part).
-       */
       if (
         isSaving &&
         typeof e !== 'undefined' &&
@@ -117,16 +113,12 @@ export const useSaveDoc = (
       }
     };
 
-    // Save every minute
     const timeout = setInterval(onSave, SAVE_INTERVAL);
-    // Save when the user leaves the page
     addEventListener('beforeunload', onSave);
-    // Save when the user navigates to another page
     router.events.on('routeChangeStart', onSave);
 
     return () => {
       clearInterval(timeout);
-
       removeEventListener('beforeunload', onSave);
       router.events.off('routeChangeStart', onSave);
     };

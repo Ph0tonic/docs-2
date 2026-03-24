@@ -1,3 +1,7 @@
+/**
+ * Encryption context for document content and file attachments.
+ * Uses VaultClient SDK with ArrayBuffer for all decrypt operations.
+ */
 import {
   ReactNode,
   createContext,
@@ -9,29 +13,25 @@ import {
   useState,
 } from 'react';
 
-import { decryptContent } from '@/docs/doc-collaboration/encryption';
+import { useVaultClient } from '@/features/docs/doc-collaboration/vault';
 
 const MIME_MAP: Record<string, string> = {
-  // Images
   png: 'image/png',
   jpg: 'image/jpeg',
   jpeg: 'image/jpeg',
   gif: 'image/gif',
   webp: 'image/webp',
   svg: 'image/svg+xml',
-  // Audio
   mp3: 'audio/mpeg',
   wav: 'audio/wav',
   ogg: 'audio/ogg',
   flac: 'audio/flac',
   aac: 'audio/aac',
-  // Video
   mp4: 'video/mp4',
   webm: 'video/webm',
   ogv: 'video/ogg',
   mov: 'video/quicktime',
   avi: 'video/x-msvideo',
-  // PDF
   pdf: 'application/pdf',
 };
 
@@ -60,14 +60,15 @@ const DEFAULT_VALUE: EncryptionContextValue = {
 const EncryptionContext = createContext<EncryptionContextValue>(DEFAULT_VALUE);
 
 interface EncryptionProviderProps {
-  symmetricKey: CryptoKey | undefined;
+  encryptedSymmetricKey: ArrayBuffer | undefined;
   children: ReactNode;
 }
 
 export const EncryptionProvider = ({
-  symmetricKey,
+  encryptedSymmetricKey,
   children,
 }: EncryptionProviderProps) => {
+  const { client: vaultClient } = useVaultClient();
   const blobUrlCacheRef = useRef<Map<string, string>>(new Map());
   const [revealAllCounter, setRevealAllCounter] = useState(0);
   const [pendingPlaceholders, setPendingPlaceholders] = useState(0);
@@ -86,35 +87,42 @@ export const EncryptionProvider = ({
 
   const decryptFileUrl = useCallback(
     async (url: string): Promise<string> => {
-      if (!symmetricKey) {
+      if (!encryptedSymmetricKey || !vaultClient) {
         return url;
       }
 
       const cached = blobUrlCacheRef.current.get(url);
+
       if (cached) {
         return cached;
       }
 
       const response = await fetch(url, { credentials: 'include' });
+
       if (!response.ok) {
         throw new Error(
           `Failed to fetch encrypted attachment: ${response.status}`,
         );
       }
 
-      const fileBytes = new Uint8Array(await response.arrayBuffer());
-      const decryptedBytes = await decryptContent(fileBytes, symmetricKey);
+      // Get file as ArrayBuffer directly — no base64 conversion
+      const encryptedBuffer = await response.arrayBuffer();
+
+      const { data: decryptedBuffer } = await vaultClient.decryptWithKey(
+        encryptedBuffer,
+        encryptedSymmetricKey,
+      );
 
       const ext = url.split('.').pop()?.toLowerCase() || '';
       const mime = MIME_MAP[ext] || 'application/octet-stream';
 
-      const blob = new Blob([decryptedBytes as BlobPart], { type: mime });
+      const blob = new Blob([decryptedBuffer], { type: mime });
       const blobUrl = URL.createObjectURL(blob);
       blobUrlCacheRef.current.set(url, blobUrl);
 
       return blobUrl;
     },
-    [symmetricKey],
+    [encryptedSymmetricKey, vaultClient],
   );
 
   useEffect(() => {
@@ -124,11 +132,11 @@ export const EncryptionProvider = ({
       );
       blobUrlCacheRef.current.clear();
     };
-  }, [symmetricKey]);
+  }, [encryptedSymmetricKey]);
 
   const value = useMemo(
     () => ({
-      isEncrypted: !!symmetricKey,
+      isEncrypted: !!encryptedSymmetricKey,
       decryptFileUrl,
       revealAllCounter,
       requestRevealAll,
@@ -137,7 +145,7 @@ export const EncryptionProvider = ({
       unregisterPlaceholder,
     }),
     [
-      symmetricKey,
+      encryptedSymmetricKey,
       decryptFileUrl,
       revealAllCounter,
       requestRevealAll,

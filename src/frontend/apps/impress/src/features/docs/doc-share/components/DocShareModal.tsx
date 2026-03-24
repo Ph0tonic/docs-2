@@ -23,6 +23,7 @@ import {
   usePublicKeyRegistry,
   useUserEncryption,
 } from '@/docs/doc-collaboration';
+import type { DocumentEncryptionSettings } from '@/docs/doc-collaboration/hook/useDocumentEncryption';
 import type { PublicKeyMismatch } from '@/docs/doc-collaboration/hook/usePublicKeyRegistry';
 import { Doc } from '@/docs/doc-management';
 import { User, useAuth } from '@/features/auth';
@@ -63,9 +64,7 @@ const ShareModalStyle = createGlobalStyle`
 
 type Props = {
   doc: Doc;
-  documentEncryptionSettings?: {
-    documentSymmetricKey: CryptoKey;
-  } | null;
+  documentEncryptionSettings?: DocumentEncryptionSettings | null;
   isRootDoc?: boolean;
   onClose: () => void;
 };
@@ -105,7 +104,7 @@ export const DocShareModal = ({
       : null;
 
   const { mismatches: keyMismatches, acceptNewKey } = usePublicKeyRegistry(
-    doc.is_encrypted ? doc.accesses_public_keys_per_user : undefined,
+    undefined,
     user?.id,
   );
   const keyMismatchUserIds = useMemo(
@@ -468,7 +467,7 @@ const QuickSearchInviteInputSection = ({
 
   const handleSelect = useCallback(
     (user: User) => {
-      if (isEncrypted && !user.encryption_public_key) {
+      if (false) {
         setShowNoKeyModal(true);
         return;
       }
@@ -489,7 +488,6 @@ const QuickSearchInviteInputSection = ({
       full_name: '',
       email: userQuery,
       short_name: '',
-      encryption_public_key: null,
       language: '',
     };
 
@@ -518,7 +516,7 @@ const QuickSearchInviteInputSection = ({
       if (keyMismatchUserIds?.has(user.id)) {
         return t('DIFFERENT PUBLIC KEY, PLEASE VERIFY');
       }
-      if (isEncrypted && !user.encryption_public_key) {
+      if (false) {
         return t(`(encryption not enabled)`);
       }
       return undefined;
@@ -538,9 +536,7 @@ const QuickSearchInviteInputSection = ({
           <DocShareModalInviteUserRow
             user={user}
             suffix={getUserSuffix(user)}
-            fingerprintKey={
-              isEncrypted ? user.encryption_public_key : undefined
-            }
+            fingerprintKey={undefined}
           />
         )}
       />

@@ -6,17 +6,14 @@ import {
   VariantType,
   useToastProvider,
 } from '@gouvfr-lasuite/cunningham-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import * as Y from 'yjs';
 
 import { Box, ButtonCloseModal, Icon, Text, TextErrors } from '@/components';
-import {
-  encryptContent,
-  generateSymmetricKey,
-  prepareEncryptedSymmetricKeysForUsers,
-  useUserEncryption,
-} from '@/docs/doc-collaboration';
+import { toBase64 } from '@/features/docs/doc-editor';
+import { useUserEncryption } from '@/docs/doc-collaboration';
+import { useVaultClient } from '@/features/docs/doc-collaboration/vault';
 import { createDocAttachment } from '@/docs/doc-editor/api';
 import { useAuth } from '@/features/auth';
 import {
@@ -46,7 +43,8 @@ import { Spinner } from '@gouvfr-lasuite/ui-kit';
 const encryptRemoteAttachments = async (
   yDoc: Y.Doc,
   docId: string,
-  symmetricKey: CryptoKey,
+  vaultClient: VaultClient,
+  encryptedSymmetricKey: ArrayBuffer,
 ): Promise<Record<string, string>> => {
   const attachmentKeysAndMetadata = extractAttachmentKeysAndMetadata(yDoc);
 
@@ -68,8 +66,13 @@ const encryptRemoteAttachments = async (
       throw new Error('attachment cannot be fetch');
     }
 
-    const fileBytes = new Uint8Array(await response.arrayBuffer());
-    const encryptedBytes = await encryptContent(fileBytes, symmetricKey);
+    // Encrypt file via vault — pure ArrayBuffer, no base64 conversion
+    const fileBuffer = await response.arrayBuffer();
+    const { encryptedData: encryptedBuffer } = await vaultClient.encryptWithKey(
+      fileBuffer,
+      encryptedSymmetricKey,
+    );
+    const encryptedBytes = new Uint8Array(encryptedBuffer);
 
     const fileName = oldAttachmentMetadata.name ?? 'file'; // since encrypted we could not reuse the file name that can be stored as clear text
     const encryptedFile = new File([encryptedBytes], fileName, {
@@ -126,6 +129,7 @@ export const ModalEncryptDoc = ({ doc, onClose }: ModalEncryptDocProps) => {
     useProviderStore();
   const { user } = useAuth();
   const { encryptionSettings } = useUserEncryption();
+  const { client: vaultClient } = useVaultClient();
 
   const [isPending, setIsPending] = useState(false);
 
@@ -150,17 +154,32 @@ export const ModalEncryptDoc = ({ doc, onClose }: ModalEncryptDocProps) => {
   const isRestricted = effectiveReach === LinkReach.RESTRICTED;
   const hasPendingInvitations = !!invitationsData && invitationsData.count > 0;
 
+  // Fetch public keys from the encryption service to check who has encryption enabled
+  const [publicKeysMap, setPublicKeysMap] = useState<Record<string, ArrayBuffer>>({});
+
+  useEffect(() => {
+    if (!accesses || !vaultClient) return;
+
+    const userIds = accesses
+      .filter((a) => a.user)
+      .map((a) => a.user.id);
+
+    if (userIds.length === 0) return;
+
+    vaultClient.fetchPublicKeys(userIds)
+      .then(({ publicKeys }) => setPublicKeysMap(publicKeys))
+      .catch(() => {});
+  }, [accesses, vaultClient]);
+
   const membersWithoutKey = useMemo(() => {
-    if (!accesses || !doc.accesses_public_keys_per_user) {
+    if (!accesses) {
       return [];
     }
-
-    const publicKeysMap = doc.accesses_public_keys_per_user;
 
     return accesses.filter(
       (access) => access.user && !publicKeysMap[access.user.id],
     );
-  }, [accesses, doc.accesses_public_keys_per_user]);
+  }, [accesses, publicKeysMap]);
 
   const hasEncryptionKeys = !!encryptionSettings;
 
@@ -178,7 +197,7 @@ export const ModalEncryptDoc = ({ doc, onClose }: ModalEncryptDocProps) => {
   };
 
   const handleEncrypt = async () => {
-    if (!provider || !user || isPending || !canEncrypt || !encryptionSettings) {
+    if (!provider || !user || isPending || !canEncrypt || !encryptionSettings || !vaultClient) {
       return;
     }
 
@@ -187,60 +206,48 @@ export const ModalEncryptDoc = ({ doc, onClose }: ModalEncryptDocProps) => {
     try {
       notifyOthers(EncryptionTransitionEvent.ENCRYPTION_STARTED);
 
-      const documentSymmetricKey = await generateSymmetricKey();
-
-      // Their public key are base64 encoded, decoding the whole
-      const usersPublicKeys: Record<string, ArrayBuffer> = {};
-
-      if (doc.accesses_public_keys_per_user) {
-        // TODO:
-        // TODO: should throw if missing public keys according to current accesses
-        // TODO:
-
-        for (const [userId, publicKey] of Object.entries(
-          doc.accesses_public_keys_per_user,
-        )) {
-          usersPublicKeys[userId] = Buffer.from(publicKey, 'base64').buffer;
-        }
-      } else {
-        // if it has been not provided it's weird because it should only happen for people not authenticated
-        throw new Error(`"accesses_public_keys_per_user" should be provided`);
+      if (Object.keys(publicKeysMap).length === 0) {
+        throw new Error('No public keys available. All members must have encryption enabled.');
       }
 
-      // Prepare encrypted symmetric keys for all users with access
-      const encryptedSymmetricKeyPerUser =
-        await prepareEncryptedSymmetricKeysForUsers(
-          documentSymmetricKey,
-          usersPublicKeys,
-        );
-
-      // clone the Yjs document since performing changes during encryption that require backend confirmation
-      // once successfully done it can be used locally
+      // Clone the Yjs document for encryption
       const ongoingDoc = new Y.Doc();
       Y.applyUpdate(ongoingDoc, Y.encodeStateAsUpdate(provider.document));
 
-      // encrypt existing attachments
-      const attachmentKeyMapping = await encryptRemoteAttachments(
-        ongoingDoc,
-        doc.id,
-        documentSymmetricKey,
-      );
-
       const ongoingDocState = Y.encodeStateAsUpdate(ongoingDoc);
 
-      // we have no need of patching back the current Yjs document with modifications
-      // since an encryption success will refetch data from the backend
+      // Encrypt document content via vault — pure ArrayBuffer
+      const { encryptedContent: encryptedContentBuffer, encryptedKeys } =
+        await vaultClient.encryptForUsers(
+          ongoingDocState.buffer as ArrayBuffer,
+          publicKeysMap,
+        );
+
+      // Convert ArrayBuffer encrypted keys to base64 for the backend API
+      const encryptedSymmetricKeyPerUser: Record<string, string> = {};
+
+      for (const [uid, keyBuffer] of Object.entries(encryptedKeys)) {
+        encryptedSymmetricKeyPerUser[uid] = toBase64(new Uint8Array(keyBuffer));
+      }
+
+      // Get the current user's encrypted key for attachment encryption
+      const currentUserEncryptedKey = encryptedKeys[user.id];
+
+      // Encrypt existing attachments using the same symmetric key via vault
+      let attachmentKeyMapping: Record<string, string> = {};
+
+      if (currentUserEncryptedKey) {
+        attachmentKeyMapping = await encryptRemoteAttachments(
+          ongoingDoc,
+          doc.id,
+          vaultClient,
+          currentUserEncryptedKey,
+        );
+      }
+
       ongoingDoc.destroy();
 
-      const encryptedContent = await encryptContent(
-        new Uint8Array(ongoingDocState),
-        documentSymmetricKey,
-      );
-
-      // TODO:
-      // TODO: if none it should at least make it for the current user
-      // TODO: so it makes sense `accesses_public_keys_per_user` is always passed?
-      // TODO:
+      const encryptedContent = new Uint8Array(encryptedContentBuffer);
 
       await encryptDoc({
         docId: doc.id,
