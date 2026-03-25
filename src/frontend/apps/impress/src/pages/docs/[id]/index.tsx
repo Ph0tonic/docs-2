@@ -216,6 +216,7 @@ const DocPage = ({ id }: DocProps) => {
       <Box $margin="large">
         <TextErrors
           causes={error.cause}
+          status={error.status}
           icon={
             error.status === 502 ? (
               <Icon iconName="wifi_off" $theme="danger" $withThemeInherited />

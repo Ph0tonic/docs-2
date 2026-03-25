@@ -13,6 +13,7 @@ and this project adheres to
 ### Changed
 
 - 💄(frontend) improve comments highlights #1961
+- ♿️(frontend) structure correctly 5xx error alerts #2128
 
 ## [v4.8.3] - 2026-03-23
 
