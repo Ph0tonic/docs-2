@@ -259,7 +259,7 @@ export function VaultClientProvider({
   return (
     <VaultClientContext.Provider
       value={{
-        client: clientRef.current,
+        client: isReady ? clientRef.current : null,
         isReady,
         isLoading,
         error,
