@@ -95,8 +95,8 @@ export const DocShareAddMemberList = ({
 
     if (doc.is_encrypted && documentEncryptionSettings && vaultClient) {
       const memberUserIds = selectedUsers
-        .filter((user) => user.id !== user.email)
-        .map((user) => user.id);
+        .filter((user) => user.id !== user.email && user.suite_user_id)
+        .map((user) => user.suite_user_id!);
 
       if (memberUserIds.length > 0) {
         const { publicKeys } = await vaultClient.fetchPublicKeys(memberUserIds);
@@ -141,7 +141,7 @@ export const DocShareAddMemberList = ({
       let memberEncryptedSymmetricKey: string | null = null;
 
       if (doc.is_encrypted && documentEncryptionSettings && vaultClient) {
-        const userPublicKey = publicKeysMap[user.id];
+        const userPublicKey = user.suite_user_id ? publicKeysMap[user.suite_user_id] : undefined;
 
         if (userPublicKey) {
           const { rewrappedKey } = await vaultClient.rewrapKey(

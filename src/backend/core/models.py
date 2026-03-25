@@ -746,7 +746,7 @@ class Document(MP_Node, BaseModel):
         return list(
             DocumentAccess.objects
             .filter(document=self, user__isnull=False)
-            .values_list('user_id', flat=True)
+            .values_list('user__sub', flat=True)
             .distinct()
         )
 
@@ -760,12 +760,12 @@ class Document(MP_Node, BaseModel):
         accesses = (
             DocumentAccess.objects
             .filter(document=self, user__isnull=False, encryption_public_key_fingerprint__isnull=False)
-            .values_list('user_id', 'encryption_public_key_fingerprint')
+            .values_list('user__sub', 'encryption_public_key_fingerprint')
         )
 
         return {
-            str(user_id): fingerprint
-            for user_id, fingerprint in accesses
+            str(sub): fingerprint
+            for sub, fingerprint in accesses
             if fingerprint
         }
 

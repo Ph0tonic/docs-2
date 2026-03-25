@@ -29,11 +29,12 @@ class UserSerializer(serializers.ModelSerializer):
 
     full_name = serializers.SerializerMethodField(read_only=True)
     short_name = serializers.SerializerMethodField(read_only=True)
+    suite_user_id = serializers.CharField(source='sub', read_only=True)
 
     class Meta:
         model = models.User
-        fields = ["id", "email", "full_name", "short_name", "language"]
-        read_only_fields = ["id", "email", "full_name", "short_name"]
+        fields = ["id", "email", "full_name", "short_name", "language", "suite_user_id"]
+        read_only_fields = ["id", "email", "full_name", "short_name", "suite_user_id"]
 
     def get_full_name(self, instance):
         """Return the full name of the user."""

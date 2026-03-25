@@ -22,6 +22,7 @@ import {
 
 import { useTranslation } from 'react-i18next';
 
+import { useCunninghamTheme } from '@/cunningham';
 import { useAuth } from '@/features/auth';
 
 // Environment configuration
@@ -98,6 +99,7 @@ export function VaultClientProvider({
 }) {
   const { user, authenticated } = useAuth();
   const { i18n } = useTranslation();
+  const { theme: cunninghamTheme } = useCunninghamTheme();
   const clientRef = useRef<VaultClient | null>(null);
   const [clientInitialized, setClientInitialized] = useState(false);
   const [isReady, setIsReady] = useState(false);
@@ -123,7 +125,7 @@ export function VaultClientProvider({
         const client = new window.EncryptionClient.VaultClient({
           vaultUrl: VAULT_URL,
           interfaceUrl: INTERFACE_URL,
-          theme: 'light',
+          theme: cunninghamTheme,
           lang: i18n.language,
         });
 
@@ -189,38 +191,24 @@ export function VaultClientProvider({
   useEffect(() => {
     const client = clientRef.current;
 
-    if (!client || !clientInitialized || !authenticated || !user?.id) {
+    if (
+      !client ||
+      !clientInitialized ||
+      !authenticated ||
+      !user?.id ||
+      !user?.suite_user_id
+    ) {
       return;
     }
 
     let cancelled = false;
 
     async function setupAuth() {
-      // Fetch the OIDC access token from the Django session.
-      // WARNING: This uses a temporary endpoint (get-access-token) — see the
-      // backend TODO for finding a better way to propagate the access token.
-      let token = user!.id; // fallback: userId (vault dev mode without JWKS)
+      if (cancelled || !client) return;
 
-      try {
-        const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_ORIGIN || ''}/api/v1.0/users/get-access-token/`,
-          { credentials: 'include' },
-        );
-
-        if (response.ok) {
-          const data = await response.json();
-
-          if (data.access_token) {
-            token = data.access_token;
-          }
-        }
-      } catch {
-        // Endpoint not available — fall back to userId for dev mode
-      }
-
-      if (cancelled) return;
-
-      client.setAuthContext({ token, userId: user!.id });
+      client.setAuthContext({
+        suiteUserId: user!.suite_user_id!,
+      });
 
       setIsLoading(true);
 
@@ -246,7 +234,7 @@ export function VaultClientProvider({
     return () => {
       cancelled = true;
     };
-  }, [clientInitialized, authenticated, user?.id]);
+  }, [clientInitialized, authenticated, user?.id, user?.suite_user_id]);
 
   const refreshKeyState = useCallback(async () => {
     const client = clientRef.current;

@@ -5,8 +5,8 @@ declare global {
   interface VaultClient {
     init(): Promise<void>;
     destroy(): void;
-    setTheme(theme: 'light' | 'dark' | 'system'): void;
-    setAuthContext(context: { token: string; userId: string }): void;
+    setTheme(theme: string): void;
+    setAuthContext(context: { suiteUserId: string }): void;
     hasKeys(): Promise<{ hasKeys: boolean }>;
     getPublicKey(): Promise<{ publicKey: ArrayBuffer }>;
     encrypt(data: ArrayBuffer): Promise<{ encryptedData: ArrayBuffer }>;
@@ -36,7 +36,7 @@ declare global {
         vaultUrl: string;
         interfaceUrl: string;
         timeout?: number;
-        theme?: 'light' | 'dark' | 'system';
+        theme?: string;
         lang?: string;
       }) => VaultClient;
     };

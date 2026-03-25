@@ -161,8 +161,8 @@ export const ModalEncryptDoc = ({ doc, onClose }: ModalEncryptDocProps) => {
     if (!accesses || !vaultClient) return;
 
     const userIds = accesses
-      .filter((a) => a.user)
-      .map((a) => a.user.id);
+      .filter((a) => a.user?.suite_user_id)
+      .map((a) => a.user.suite_user_id!);
 
     if (userIds.length === 0) return;
 
@@ -177,7 +177,7 @@ export const ModalEncryptDoc = ({ doc, onClose }: ModalEncryptDocProps) => {
     }
 
     return accesses.filter(
-      (access) => access.user && !publicKeysMap[access.user.id],
+      (access) => access.user?.suite_user_id && !publicKeysMap[access.user.suite_user_id],
     );
   }, [accesses, publicKeysMap]);
 
@@ -231,7 +231,7 @@ export const ModalEncryptDoc = ({ doc, onClose }: ModalEncryptDocProps) => {
       }
 
       // Get the current user's encrypted key for attachment encryption
-      const currentUserEncryptedKey = encryptedKeys[user.id];
+      const currentUserEncryptedKey = user.suite_user_id ? encryptedKeys[user.suite_user_id] : undefined;
 
       // Encrypt existing attachments using the same symmetric key via vault
       let attachmentKeyMapping: Record<string, string> = {};

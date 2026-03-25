@@ -31,6 +31,7 @@ export const DocShareInvitationItem = ({
   const { spacingsTokens } = useCunninghamTheme();
   const invitedUser: User = {
     id: invitation.email,
+    suite_user_id: null,
     full_name: invitation.email,
     email: invitation.email,
     short_name: invitation.email,

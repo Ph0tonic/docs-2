@@ -143,10 +143,11 @@ export const QuickSearchGroupMember = ({
       <QuickSearchGroup
         group={membersData}
         renderElement={(access) => {
-          const hasMismatch = keyMismatchUserIds?.has(access.user.id);
+          const uid = access.user.suite_user_id;
+          const hasMismatch = uid ? keyMismatchUserIds?.has(uid) : false;
           const hasNoEncryptionKey =
             doc.is_encrypted &&
-            !doc.accesses_fingerprints_per_user?.[access.user.id];
+            (!uid || !doc.accesses_fingerprints_per_user?.[uid]);
 
           let suffix: string | undefined;
           if (hasMismatch) {
@@ -163,12 +164,12 @@ export const QuickSearchGroupMember = ({
               access={access}
               suffix={suffix}
               onSuffixClick={
-                hasMismatch
-                  ? () => setMismatchUserId(access.user.id)
+                hasMismatch && uid
+                  ? () => setMismatchUserId(uid)
                   : undefined
               }
               fingerprintKey={
-                doc.accesses_fingerprints_per_user?.[access.user.id]
+                uid ? doc.accesses_fingerprints_per_user?.[uid] : undefined
               }
             />
           );

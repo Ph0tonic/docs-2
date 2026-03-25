@@ -105,7 +105,7 @@ export const DocShareModal = ({
 
   const { mismatches: keyMismatches, acceptNewKey } = usePublicKeyRegistry(
     undefined,
-    user?.id,
+    user?.suite_user_id ?? undefined,
   );
   const keyMismatchUserIds = useMemo(
     () => new Set(keyMismatches.map((m) => m.userId)),
@@ -470,11 +470,11 @@ const QuickSearchInviteInputSection = ({
 
   const handleSelect = useCallback(
     (user: User) => {
-      if (isEncrypted && !doc.accesses_fingerprints_per_user?.[user.id]) {
+      if (isEncrypted && (!user.suite_user_id || !doc.accesses_fingerprints_per_user?.[user.suite_user_id])) {
         setShowNoKeyModal(true);
         return;
       }
-      if (keyMismatchUserIds?.has(user.id)) {
+      if (user.suite_user_id && keyMismatchUserIds?.has(user.suite_user_id)) {
         setMismatchUser(user);
         return;
       }
@@ -488,6 +488,7 @@ const QuickSearchInviteInputSection = ({
     const isEmail = isValidEmail(userQuery);
     const newUser: User = {
       id: userQuery,
+      suite_user_id: null,
       full_name: '',
       email: userQuery,
       short_name: '',
@@ -516,10 +517,10 @@ const QuickSearchInviteInputSection = ({
 
   const getUserSuffix = useCallback(
     (user: User): string | undefined => {
-      if (keyMismatchUserIds?.has(user.id)) {
+      if (user.suite_user_id && keyMismatchUserIds?.has(user.suite_user_id)) {
         return t('DIFFERENT PUBLIC KEY, PLEASE VERIFY');
       }
-      if (isEncrypted && !doc.accesses_fingerprints_per_user?.[user.id]) {
+      if (isEncrypted && (!user.suite_user_id || !doc.accesses_fingerprints_per_user?.[user.suite_user_id])) {
         return t(`(encryption not enabled)`);
       }
       return undefined;
@@ -539,7 +540,7 @@ const QuickSearchInviteInputSection = ({
           <DocShareModalInviteUserRow
             user={user}
             suffix={getUserSuffix(user)}
-            fingerprintKey={doc.accesses_fingerprints_per_user?.[user.id]}
+            fingerprintKey={user.suite_user_id ? doc.accesses_fingerprints_per_user?.[user.suite_user_id] : undefined}
           />
         )}
       />
@@ -596,7 +597,7 @@ const QuickSearchInviteInputSection = ({
       {mismatchUser &&
         (() => {
           const mismatch = keyMismatches?.find(
-            (m) => m.userId === mismatchUser.id,
+            (m) => m.userId === mismatchUser.suite_user_id,
           );
           return (
             <ModalKeyMismatch
@@ -604,7 +605,7 @@ const QuickSearchInviteInputSection = ({
               onAcceptKey={
                 acceptNewKey
                   ? () => {
-                      void acceptNewKey(mismatchUser.id).then(() => {
+                      void acceptNewKey(mismatchUser.suite_user_id!).then(() => {
                         onSelect(mismatchUser);
                       });
                     }

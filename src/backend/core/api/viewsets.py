@@ -252,35 +252,6 @@ class UserViewSet(
             self.serializer_class(request.user, context=context).data
         )
 
-    @drf.decorators.action(
-        detail=False,
-        methods=["get"],
-        url_name="get-access-token",
-        url_path="get-access-token",
-        permission_classes=[permissions.IsAuthenticated],
-    )
-    def get_access_token(self, request):
-        """
-        WARNING: Temporary endpoint — to be removed.
-
-        TODO: Find a better way to propagate the OIDC access token to the frontend
-        so it can be passed to the VaultClient encryption library.
-        We should also consider having ProConnect flow directly on interface.encryption,
-        so it can obtain its own valid token when opened in a new tab (not as an iframe).
-
-        Returns the OIDC access token stored in the Django session.
-        Requires OIDC_STORE_ACCESS_TOKEN=True in settings.
-        """
-        access_token = request.session.get("oidc_access_token")
-
-        if not access_token:
-            return drf.response.Response(
-                {"detail": "No access token available in session."},
-                status=404,
-            )
-
-        return drf.response.Response({"access_token": access_token})
-
 
 class ResourceAccessViewsetMixin:
     """Mixin with methods common to all access viewsets."""
@@ -2127,7 +2098,8 @@ class DocumentViewSet(
             })
 
         # Validate that we have encrypted symmetric keys for all users with access
-        users_with_access = {str(access.user_id) for access in document_accesses}
+        # Keys in encryptedSymmetricKeyPerUser are keyed by the user's OIDC `sub`
+        users_with_access = {str(access.user.sub) for access in document_accesses}
 
         # Check that encryptedSymmetricKeyPerUser contains all required users
         provided_user_ids = set(encryptedSymmetricKeyPerUser.keys())
@@ -2178,10 +2150,11 @@ class DocumentViewSet(
             transaction.on_commit(_cleanup_old_attachments)
 
         # Store the encrypted symmetric keys in DocumentAccess for each user
-        for user_id, encrypted_key in encryptedSymmetricKeyPerUser.items():
+        # Keys are keyed by the user's OIDC `sub`, so look up by user__sub
+        for sub, encrypted_key in encryptedSymmetricKeyPerUser.items():
             try:
                 # Find the DocumentAccess record for this user and document
-                access = models.DocumentAccess.objects.get(document=document, user_id=user_id)
+                access = models.DocumentAccess.objects.get(document=document, user__sub=sub)
                 access.encrypted_document_symmetric_key_for_user = encrypted_key
                 access.save()
             except models.DocumentAccess.DoesNotExist:

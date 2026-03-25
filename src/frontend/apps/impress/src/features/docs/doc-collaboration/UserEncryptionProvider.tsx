@@ -63,10 +63,10 @@ export const UserEncryptionProvider = ({
     null;
   let encryptionError: EncryptionError = null;
 
-  if (isReady && user?.id) {
+  if (isReady && user?.suite_user_id) {
     if (hasKeys) {
       encryptionSettings = {
-        userId: user.id,
+        userId: user.suite_user_id,
         userPrivateKey: null, // Keys are in the vault — use VaultClient for crypto
         userPublicKey: null,
       };

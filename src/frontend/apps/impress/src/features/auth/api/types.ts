@@ -8,6 +8,7 @@
  */
 export interface User {
   id: string;
+  suite_user_id: string | null;
   email: string;
   full_name: string;
   short_name: string;
