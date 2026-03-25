@@ -407,6 +407,7 @@ export const DocShareModal = ({
 
                     {!showMemberSection && canShare && (
                       <QuickSearchInviteInputSection
+                        doc={doc}
                         searchUsersRawData={searchUsersQuery.data}
                         onSelect={onSelect}
                         userQuery={userQuery}
@@ -434,6 +435,7 @@ export const DocShareModal = ({
 };
 
 interface QuickSearchInviteInputSectionProps {
+  doc: Doc;
   onSelect: (usr: User) => void;
   searchUsersRawData: User[] | undefined;
   userQuery: string;
@@ -444,6 +446,7 @@ interface QuickSearchInviteInputSectionProps {
 }
 
 const QuickSearchInviteInputSection = ({
+  doc,
   onSelect,
   searchUsersRawData,
   userQuery,
@@ -467,7 +470,7 @@ const QuickSearchInviteInputSection = ({
 
   const handleSelect = useCallback(
     (user: User) => {
-      if (false) {
+      if (isEncrypted && !doc.accesses_fingerprints_per_user?.[user.id]) {
         setShowNoKeyModal(true);
         return;
       }
@@ -477,7 +480,7 @@ const QuickSearchInviteInputSection = ({
       }
       onSelect(user);
     },
-    [isEncrypted, keyMismatchUserIds, onSelect],
+    [isEncrypted, doc.accesses_fingerprints_per_user, keyMismatchUserIds, onSelect],
   );
 
   const searchUserData: QuickSearchData<User> = useMemo(() => {
@@ -516,12 +519,12 @@ const QuickSearchInviteInputSection = ({
       if (keyMismatchUserIds?.has(user.id)) {
         return t('DIFFERENT PUBLIC KEY, PLEASE VERIFY');
       }
-      if (false) {
+      if (isEncrypted && !doc.accesses_fingerprints_per_user?.[user.id]) {
         return t(`(encryption not enabled)`);
       }
       return undefined;
     },
-    [isEncrypted, keyMismatchUserIds, t],
+    [isEncrypted, doc.accesses_fingerprints_per_user, keyMismatchUserIds, t],
   );
 
   return (
@@ -536,7 +539,7 @@ const QuickSearchInviteInputSection = ({
           <DocShareModalInviteUserRow
             user={user}
             suffix={getUserSuffix(user)}
-            fingerprintKey={undefined}
+            fingerprintKey={doc.accesses_fingerprints_per_user?.[user.id]}
           />
         )}
       />
