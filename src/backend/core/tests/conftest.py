@@ -8,7 +8,7 @@ from django.core.cache import cache
 import pytest
 import responses
 
-from core import factories
+from core import factories, models
 from core.tests.utils.urls import reload_urls
 
 USER = "user"
@@ -143,3 +143,10 @@ def user_token():
     A fixture to create a user token for testing.
     """
     return build_authorization_bearer("some_token")
+
+
+def create_document_with_updated_at(updated_at, **kwargs):
+    """Helper to create a document with a specific updated_at, bypassing auto_now=True."""
+    document = factories.DocumentFactory(**kwargs)
+    models.Document.objects.filter(pk=document.pk).update(updated_at=updated_at)
+    return models.Document.objects.get(pk=document.pk)

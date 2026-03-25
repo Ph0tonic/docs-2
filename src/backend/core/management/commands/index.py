@@ -3,11 +3,13 @@ Handle search setup that needs to be done at bootstrap time.
 """
 
 import logging
-import time
+from datetime import datetime
 
+from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
 from core.services.search_indexers import get_document_indexer
+from core.tasks.search import batch_document_indexer_task
 
 logger = logging.getLogger("docs.search.bootstrap_search")
 
@@ -24,8 +26,24 @@ class Command(BaseCommand):
             action="store",
             dest="batch_size",
             type=int,
-            default=50,
+            default=settings.SEARCH_INDEXER_BATCH_SIZE,
             help="Indexation query batch size",
+        )
+        parser.add_argument(
+            "--lower-time-bound",
+            action="store",
+            dest="lower_time_bound",
+            type=datetime.fromisoformat,
+            default=None,
+            help="DateTime in ISO format. Only documents updated after this date will be indexed",
+        )
+        parser.add_argument(
+            "--upper-time-bound",
+            action="store",
+            dest="upper_time_bound",
+            type=datetime.fromisoformat,
+            default=None,
+            help="DateTime in ISO format. Only documents updated before this date will be indexed",
         )
 
     def handle(self, *args, **options):
@@ -35,18 +53,15 @@ class Command(BaseCommand):
         if not indexer:
             raise CommandError("The indexer is not enabled or properly configured.")
 
-        logger.info("Starting to regenerate Find index...")
-        start = time.perf_counter()
-        batch_size = options["batch_size"]
+        batch_document_indexer_task.apply_async(
+            kwargs={
+                "lower_time_bound": options["lower_time_bound"],
+                "upper_time_bound": options["upper_time_bound"],
+                "batch_size": options["batch_size"],
+                "crash_safe_mode": True,
+            },
+        )
 
-        try:
-            count = indexer.index(batch_size=batch_size, crash_safe_mode=True)
-        except Exception as err:
-            raise CommandError("Unable to regenerate index") from err
-
-        duration = time.perf_counter() - start
         logger.info(
-            "Search index regenerated from %d document(s) in %.2f seconds.",
-            count,
-            duration,
+            "Document indexing task sent to worker",
         )
