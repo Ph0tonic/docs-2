@@ -143,13 +143,16 @@ export const DocShareAddMemberList = ({
       if (doc.is_encrypted && documentEncryptionSettings && vaultClient) {
         const userPublicKey = user.suite_user_id ? publicKeysMap[user.suite_user_id] : undefined;
 
-        if (userPublicKey) {
-          const { rewrappedKey } = await vaultClient.rewrapKey(
+        if (userPublicKey && user.suite_user_id) {
+          const { encryptedKeys } = await vaultClient.shareKeys(
             documentEncryptionSettings.encryptedSymmetricKey,
-            userPublicKey,
+            { [user.suite_user_id]: userPublicKey },
           );
 
-          memberEncryptedSymmetricKey = toBase64(new Uint8Array(rewrappedKey));
+          const wrappedKey = encryptedKeys[user.suite_user_id];
+          if (wrappedKey) {
+            memberEncryptedSymmetricKey = toBase64(new Uint8Array(wrappedKey));
+          }
         }
       }
 

@@ -10,7 +10,7 @@ import { toBase64 } from '@/features/docs/doc-editor';
 interface EncryptDocProps {
   docId: string;
   content: Uint8Array<ArrayBufferLike>;
-  /** Per-user encrypted symmetric keys as base64 strings (from VaultClient.encryptForUsers) */
+  /** Per-user encrypted symmetric keys as base64 strings (from VaultClient.encryptWithoutKey) */
   encryptedSymmetricKeyPerUser: Record<string, string>;
   attachmentKeyMapping?: Record<string, string>;
 }

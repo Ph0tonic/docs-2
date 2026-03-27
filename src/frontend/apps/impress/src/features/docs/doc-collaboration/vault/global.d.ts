@@ -9,12 +9,10 @@ declare global {
     setAuthContext(context: { suiteUserId: string }): void;
     hasKeys(): Promise<{ hasKeys: boolean }>;
     getPublicKey(): Promise<{ publicKey: ArrayBuffer }>;
-    encrypt(data: ArrayBuffer): Promise<{ encryptedData: ArrayBuffer }>;
-    decrypt(encryptedData: ArrayBuffer): Promise<{ data: ArrayBuffer }>;
-    encryptForUsers(data: ArrayBuffer, userPublicKeys: Record<string, ArrayBuffer>): Promise<{ encryptedContent: ArrayBuffer; encryptedKeys: Record<string, ArrayBuffer> }>;
+    encryptWithoutKey(data: ArrayBuffer, userPublicKeys: Record<string, ArrayBuffer>): Promise<{ encryptedContent: ArrayBuffer; encryptedKeys: Record<string, ArrayBuffer> }>;
     encryptWithKey(data: ArrayBuffer, encryptedSymmetricKey: ArrayBuffer): Promise<{ encryptedData: ArrayBuffer }>;
     decryptWithKey(encryptedData: ArrayBuffer, encryptedSymmetricKey: ArrayBuffer): Promise<{ data: ArrayBuffer }>;
-    rewrapKey(encryptedSymmetricKey: ArrayBuffer, targetUserPublicKey: ArrayBuffer): Promise<{ rewrappedKey: ArrayBuffer }>;
+    shareKeys(encryptedSymmetricKey: ArrayBuffer, userPublicKeys: Record<string, ArrayBuffer>): Promise<{ encryptedKeys: Record<string, ArrayBuffer> }>;
     fetchPublicKeys(userIds: string[]): Promise<{ publicKeys: Record<string, ArrayBuffer> }>;
     checkFingerprints(userFingerprints: Record<string, string>, currentUserId?: string): Promise<{ results: Array<{ userId: string; knownFingerprint: string | null; providedFingerprint: string; status: 'trusted' | 'refused' | 'unknown' }> }>;
     acceptFingerprint(userId: string, fingerprint: string): Promise<void>;

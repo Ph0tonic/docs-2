@@ -857,10 +857,10 @@
       "publicClient": true,
       "protocol": "openid-connect",
       "redirectUris": [
-        "http://localhost:7202/auth/callback"
+        "http://encryption.localhost:7200/auth/callback"
       ],
       "webOrigins": [
-        "http://localhost:7202"
+        "http://encryption.localhost:7200"
       ],
       "frontchannelLogout": true,
       "attributes": {},

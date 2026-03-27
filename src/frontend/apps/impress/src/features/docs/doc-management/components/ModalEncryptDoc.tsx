@@ -218,7 +218,7 @@ export const ModalEncryptDoc = ({ doc, onClose }: ModalEncryptDocProps) => {
 
       // Encrypt document content via vault — pure ArrayBuffer
       const { encryptedContent: encryptedContentBuffer, encryptedKeys } =
-        await vaultClient.encryptForUsers(
+        await vaultClient.encryptWithoutKey(
           ongoingDocState.buffer as ArrayBuffer,
           publicKeysMap,
         );
