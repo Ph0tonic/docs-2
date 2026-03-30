@@ -99,6 +99,15 @@ class Base(Configuration):
                 "localhost", environ_name="DB_HOST", environ_prefix=None
             ),
             "PORT": values.Value(5432, environ_name="DB_PORT", environ_prefix=None),
+            # Maximum lifetime of a database connection in seconds.
+            # Use 0 to close connections at the end of each request.
+            # Use None for unlimited persistent connections.
+            # When using the psycopg pool (DB_PSYCOPG_POOL_ENABLED), set this to 0
+            # so that connections are returned to the pool after each request.
+            "CONN_MAX_AGE": values.IntegerValue(
+                0, environ_name="DB_CONN_MAX_AGE", environ_prefix=None
+            ),
+            "OPTIONS": {},
             # Psycopg pool can be configured in the post_setup method
         }
     }
@@ -1113,30 +1122,24 @@ class Base(Configuration):
         )
 
         if psycopg_pool_enabled:
-            cls.DATABASES["default"].update(
-                {
-                    "OPTIONS": {
-                        # https://www.psycopg.org/psycopg3/docs/api/pool.html#psycopg_pool.ConnectionPool
-                        "pool": {
-                            "min_size": values.IntegerValue(
-                                4,
-                                environ_name="DB_PSYCOPG_POOL_MIN_SIZE",
-                                environ_prefix=None,
-                            ),
-                            "max_size": values.IntegerValue(
-                                None,
-                                environ_name="DB_PSYCOPG_POOL_MAX_SIZE",
-                                environ_prefix=None,
-                            ),
-                            "timeout": values.IntegerValue(
-                                3,
-                                environ_name="DB_PSYCOPG_POOL_TIMEOUT",
-                                environ_prefix=None,
-                            ),
-                        }
-                    },
-                }
-            )
+            # https://www.psycopg.org/psycopg3/docs/api/pool.html#psycopg_pool.ConnectionPool
+            cls.DATABASES["default"].setdefault("OPTIONS", {})["pool"] = {
+                "min_size": values.IntegerValue(
+                    4,
+                    environ_name="DB_PSYCOPG_POOL_MIN_SIZE",
+                    environ_prefix=None,
+                ),
+                "max_size": values.IntegerValue(
+                    None,
+                    environ_name="DB_PSYCOPG_POOL_MAX_SIZE",
+                    environ_prefix=None,
+                ),
+                "timeout": values.IntegerValue(
+                    3,
+                    environ_name="DB_PSYCOPG_POOL_TIMEOUT",
+                    environ_prefix=None,
+                ),
+            }
 
 
 class Build(Base):

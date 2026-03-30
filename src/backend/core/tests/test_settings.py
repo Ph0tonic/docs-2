@@ -30,6 +30,20 @@ def test_invalid_settings_oidc_email_configuration():
     )
 
 
+def test_settings_conn_max_age_default():
+    """
+    Test that DB_CONN_MAX_AGE defaults to 0 (close connections at the end of each request).
+
+    CONN_MAX_AGE is defined in the DATABASES class body and resolved by django-configurations
+    at class setup time, so no post_setup() call is required here.
+    """
+
+    class TestSettings(Base):
+        """Fake test settings."""
+
+    assert TestSettings.DATABASES["default"]["CONN_MAX_AGE"] == 0
+
+
 def test_settings_psycopg_pool_not_enabled():
     """
     Test that not changing DB_PSYCOPG_POOL_ENABLED should not configure psycopg in the DATABASES
