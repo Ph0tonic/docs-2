@@ -7,6 +7,7 @@ from django.contrib.auth import admin as auth_admin
 from django.core.management import call_command
 from django.http import HttpRequest
 from django.shortcuts import redirect, render
+from django.urls import path
 from django.utils.translation import gettext_lazy as _
 
 from treebeard.admin import TreeAdmin
@@ -234,46 +235,53 @@ class InvitationAdmin(admin.ModelAdmin):
         obj.save()
 
 
-@admin.register(models.RunIndexing)
-class RunIndexingAdmin(admin.ModelAdmin):
-    """Admin for running indexing commands."""
-
-    def changelist_view(self, request: HttpRequest, extra_context=None):
-        """Override to avoid querying the database and handle form submission."""
-        if request.method == "POST":
-            form = RunIndexingForm(request.POST)
-            if form.is_valid():
-                call_command(
-                    "index",
-                    batch_size=int(request.POST.get("batch_size")),
-                    lower_time_bound=self.convert_to_isoformat(
-                        request.POST.get("lower_time_bound")
-                    ),
-                    upper_time_bound=self.convert_to_isoformat(
-                        request.POST.get("upper_time_bound")
-                    ),
-                    crash_safe_mode=bool(request.POST.get("crash_safe_mode")),
-                )
-                messages.success(request, _("Indexing triggered!"))
-            else:
-                messages.error(request, _("Please correct the errors below."))
-
+def run_indexing_view(request: HttpRequest):
+    """Custom admin view for running indexing commands."""
+    if request.method == "POST":
+        form = RunIndexingForm(request.POST)
+        if form.is_valid():
+            call_command(
+                "index",
+                batch_size=int(request.POST.get("batch_size")),
+                lower_time_bound=convert_to_isoformat(
+                    request.POST.get("lower_time_bound")
+                ),
+                upper_time_bound=convert_to_isoformat(
+                    request.POST.get("upper_time_bound")
+                ),
+            )
+            messages.success(request, _("Indexing triggered!"))
         else:
-            form = RunIndexingForm()
+            messages.error(request, _("Please correct the errors below."))
+    else:
+        form = RunIndexingForm()
 
-        return render(
-            request=request,
-            template_name="runindexing.html",
-            context={
-                **self.admin_site.each_context(request),
-                "title": "Run Indexing Command",
-                "form": form,
-            },
-        )
+    return render(
+        request=request,
+        template_name="runindexing.html",
+        context={
+            **admin.site.each_context(request),
+            "title": "Run Indexing Command",
+            "form": form,
+        },
+    )
 
-    @staticmethod
-    def convert_to_isoformat(value: str) -> str | None:
-        """Convert datetime-local input to ISO format."""
-        if value:
-            return datetime.fromisoformat(value).isoformat()
-        return None
+
+def convert_to_isoformat(value: str) -> str | None:
+    """Convert datetime-local input to ISO format."""
+    if value:
+        return datetime.fromisoformat(value).isoformat()
+    return None
+
+
+class CustomAdminSite(admin.AdminSite):
+    """Custom admin site with additional URLs."""
+
+    def get_urls(self):
+        return [
+            path("core/runindexing/", self.admin_view(run_indexing_view)),
+            *super().get_urls(),
+        ]
+
+
+admin.site.__class__ = CustomAdminSite
