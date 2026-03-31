@@ -19,7 +19,7 @@ from core.tests.conftest import create_document_with_updated_at
 
 @pytest.mark.django_db
 @pytest.mark.usefixtures("indexer_settings")
-def test_index_without_bound_and_crash_safe_mode_disabled_success():
+def test_index_without_bound_success():
     """Test the command `index` that run the Find app indexer for all the available documents."""
     user = factories.UserFactory()
     indexer = FindDocumentIndexer()
@@ -55,29 +55,26 @@ def test_index_without_bound_and_crash_safe_mode_disabled_success():
         key=itemgetter("id"),
     )
 
-    # crash_safe_mode deactivated -> no checkpoint stored
-    assert cache.get(BULK_INDEXER_CHECKPOINT) is None
-
 
 @pytest.mark.django_db
 @pytest.mark.usefixtures("indexer_settings")
-def test_index_with_both_bounds_and_crash_safe_mode_success():
+def test_index_with_both_bounds_success():
     """Test the command `index` for all documents within time bound."""
     cache.clear()
     lower_time_bound = datetime(2024, 2, 1, tzinfo=timezone.utc)
     upper_time_bound = lower_time_bound + timedelta(days=30)
 
     document_too_early = create_document_with_updated_at(
-        lower_time_bound - timedelta(days=10)
+        updated_at=lower_time_bound - timedelta(days=10)
     )
     document_in_window_1 = create_document_with_updated_at(
-        lower_time_bound + timedelta(days=5)
+        updated_at=lower_time_bound + timedelta(days=5)
     )
     document_in_window_2 = create_document_with_updated_at(
-        lower_time_bound + timedelta(days=15)
+        updated_at=lower_time_bound + timedelta(days=15)
     )
     document_too_late = create_document_with_updated_at(
-        upper_time_bound + timedelta(days=10)
+        updated_at=upper_time_bound + timedelta(days=10)
     )
 
     with mock.patch.object(FindDocumentIndexer, "push") as mock_push:
@@ -85,7 +82,6 @@ def test_index_with_both_bounds_and_crash_safe_mode_success():
             "index",
             lower_time_bound=lower_time_bound.isoformat(),
             upper_time_bound=upper_time_bound.isoformat(),
-            crash_safe_mode=True,
         )
     all_push_call_args = [
         document["id"]
@@ -117,17 +113,33 @@ def test_index_with_crash_recovery():
     batch_size = 2
     documents = [
         # batch 0
-        create_document_with_updated_at(lower_time_bound + timedelta(days=5)),
-        create_document_with_updated_at(lower_time_bound + timedelta(days=10)),
+        create_document_with_updated_at(
+            updated_at=lower_time_bound + timedelta(days=5)
+        ),
+        create_document_with_updated_at(
+            updated_at=lower_time_bound + timedelta(days=10)
+        ),
         # batch 1
-        create_document_with_updated_at(lower_time_bound + timedelta(days=20)),
-        create_document_with_updated_at(lower_time_bound + timedelta(days=25)),
+        create_document_with_updated_at(
+            updated_at=lower_time_bound + timedelta(days=20)
+        ),
+        create_document_with_updated_at(
+            updated_at=lower_time_bound + timedelta(days=25)
+        ),
         # batch 2 - will crash here
-        create_document_with_updated_at(lower_time_bound + timedelta(days=30)),
-        create_document_with_updated_at(lower_time_bound + timedelta(days=35)),
+        create_document_with_updated_at(
+            updated_at=lower_time_bound + timedelta(days=30)
+        ),
+        create_document_with_updated_at(
+            updated_at=lower_time_bound + timedelta(days=35)
+        ),
         # batch 3
-        create_document_with_updated_at(lower_time_bound + timedelta(days=40)),
-        create_document_with_updated_at(lower_time_bound + timedelta(days=45)),
+        create_document_with_updated_at(
+            updated_at=lower_time_bound + timedelta(days=40)
+        ),
+        create_document_with_updated_at(
+            updated_at=lower_time_bound + timedelta(days=45)
+        ),
     ]
 
     def push_with_failure_on_batch_2(data):
@@ -143,7 +155,6 @@ def test_index_with_crash_recovery():
             batch_size=batch_size,
             lower_time_bound=lower_time_bound.isoformat(),
             upper_time_bound=upper_time_bound.isoformat(),
-            crash_safe_mode=True,
         )
     all_push_call_args = [
         document["id"]
@@ -171,24 +182,23 @@ def test_index_with_crash_recovery():
             batch_size=batch_size,
             lower_time_bound=checkpoint,
             upper_time_bound=upper_time_bound.isoformat(),
-            crash_safe_mode=True,
         )
-        all_push_call_args = [
-            document["id"]
-            for call_arg_list in mock_push.call_args_list
-            for document in call_arg_list.args[0]
-        ]
+    all_push_call_args = [
+        document["id"]
+        for call_arg_list in mock_push.call_args_list
+        for document in call_arg_list.args[0]
+    ]
 
-        # first 2 batches should NOT be re-indexed
-        # except the last document of the last batch which is on the checkpoint boundary
-        # -> doc 0, 1 and 2
-        for i in range(0, 3):
-            assert str(documents[i].id) not in all_push_call_args
-        # next batches should be indexed including the document at the checkpoint boundary
-        # which has already been indexed and is re-indexed
-        # -> doc 3 to the end
-        for i in range(3, 8):
-            assert str(documents[i].id) in all_push_call_args
+    # first 2 batches should NOT be re-indexed
+    # except the last document of the last batch which is on the checkpoint boundary
+    # -> doc 0, 1 and 2
+    for i in range(0, 3):
+        assert str(documents[i].id) not in all_push_call_args
+    # next batches should be indexed including the document at the checkpoint boundary
+    # which has already been indexed and is re-indexed
+    # -> doc 3 to the end
+    for i in range(3, 8):
+        assert str(documents[i].id) in all_push_call_args
 
 
 @pytest.mark.django_db
