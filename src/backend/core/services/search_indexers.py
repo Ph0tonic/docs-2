@@ -165,9 +165,9 @@ class BaseDocumentIndexer(ABC):
             count += len(serialized_batch)
 
             if crash_safe_mode:
-                django_cache.set(
-                    BULK_INDEXER_CHECKPOINT, serialized_batch[-1]["updated_at"]
-                )
+                checkpoint = serialized_batch[-1]["updated_at"]
+                logger.info("Checkpoint: %s.", checkpoint)
+                django_cache.set(BULK_INDEXER_CHECKPOINT, checkpoint)
 
         return count
 
