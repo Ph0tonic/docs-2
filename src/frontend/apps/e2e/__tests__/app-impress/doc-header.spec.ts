@@ -179,7 +179,8 @@ test.describe('Doc Header', () => {
     await optionMenu.click();
     await expect(removeEmojiMenuItem).toBeHidden();
     await addEmojiMenuItem.click();
-    await expect(emojiPicker).toHaveText('📄');
+    // The 1 April the emoji is a fish
+    await expect(emojiPicker).toHaveText(/📄|🐟/);
 
     // Change emoji
     await emojiPicker.click({
