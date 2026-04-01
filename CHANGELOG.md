@@ -10,6 +10,7 @@ and this project adheres to
 
 - 🔧(backend) settings CONVERSION_UPLOAD_ENABLED to control usage of docspec
 - 🥚(frontend) add easter egg on doc emoji creation #2155
+- ✅ E2E - Any instance friendly #2142
 
 ### Changed
 
