@@ -8,7 +8,8 @@ and this project adheres to
 
 ### Added
 
-- ⚡️(backend)  access document content using nginx auth_request module
+- ⚡️(backend) access document content using nginx auth_request module
+- ✨(backend) create a dedicated endpoint to update document content 
 
 ### Changed
 

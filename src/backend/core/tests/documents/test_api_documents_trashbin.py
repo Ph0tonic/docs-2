@@ -95,6 +95,7 @@ def test_api_documents_trashbin_format():
                 "restricted": None,
             },
             "mask": False,
+            "content": False,
             "content_auth": False,
             "media_auth": False,
             "media_check": False,

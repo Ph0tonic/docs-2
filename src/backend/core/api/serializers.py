@@ -358,6 +358,36 @@ class DocumentSerializer(ListDocumentSerializer):
         return super().save(**kwargs)
 
 
+class DocumentContentSerializer(serializers.Serializer):
+    """Serializer for updating only the raw content of a document stored in S3."""
+
+    content = serializers.CharField(required=True)
+
+    def validate_content(self, value):
+        """Validate the content field."""
+        if not value:
+            return None
+
+        try:
+            b64decode(value, validate=True)
+        except binascii.Error as err:
+            raise serializers.ValidationError("Invalid base64 content.") from err
+
+        return value
+
+    def update(self, instance, validated_data):
+        """
+        This serializer does not support updates.
+        """
+        raise NotImplementedError("Update is not supported for this serializer.")
+
+    def create(self, validated_data):
+        """
+        This serializer does not support create.
+        """
+        raise NotImplementedError("Create is not supported for this serializer.")
+
+
 class DocumentAccessSerializer(serializers.ModelSerializer):
     """Serialize document accesses."""
 

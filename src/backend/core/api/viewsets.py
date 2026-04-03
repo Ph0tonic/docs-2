@@ -1909,6 +1909,55 @@ class DocumentViewSet(
             "authorized", headers=signed_request.headers, status=200
         )
 
+    @drf.decorators.action(detail=True, methods=["patch"], url_path="content")
+    def content(self, request, *args, **kwargs):
+        """Update the raw Yjs content of a document stored in S3."""
+        document = self.get_object()
+        serializer = serializers.DocumentContentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        content = serializer.validated_data["content"]
+
+        extracted_attachments = set(extract_attachments(content))
+
+        existing_attachments = set(document.attachments or [])
+        new_attachments = extracted_attachments - existing_attachments
+        if new_attachments:
+            attachments_documents = (
+                models.Document.objects.filter(
+                    attachments__overlap=list(new_attachments)
+                )
+                .only("path", "attachments")
+                .order_by("path")
+            )
+
+            user = self.request.user
+            readable_per_se_paths = (
+                models.Document.objects.readable_per_se(user)
+                .order_by("path")
+                .values_list("path", flat=True)
+            )
+            readable_attachments_paths = filter_descendants(
+                [doc.path for doc in attachments_documents],
+                readable_per_se_paths,
+                skip_sorting=True,
+            )
+
+            readable_attachments = set()
+            for attachments_document in attachments_documents:
+                if attachments_document.path not in readable_attachments_paths:
+                    continue
+                readable_attachments.update(
+                    set(attachments_document.attachments) & new_attachments
+                )
+
+            # Update attachments with readable keys
+            document.attachments = list(existing_attachments | readable_attachments)
+        document.content = content
+        document.save()
+
+        return drf_response.Response(status=status.HTTP_204_NO_CONTENT)
+
     @drf.decorators.action(detail=True, methods=["get"], url_path="media-check")
     def media_check(self, request, *args, **kwargs):
         """
