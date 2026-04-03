@@ -6,6 +6,10 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Changed
+
+- ♻️(backend) rename documents content endpoint in convert
+
 ### Added
 
 - 🔧(backend) settings CONVERSION_UPLOAD_ENABLED to control usage of docspec

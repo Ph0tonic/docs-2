@@ -2192,10 +2192,10 @@ class DocumentViewSet(
     @drf.decorators.action(
         detail=True,
         methods=["get"],
-        url_path="content",
-        name="Get document content in different formats",
+        url_path="convert",
+        name="Convert document content to different formats",
     )
-    def content(self, request, pk=None):
+    def convert(self, request, pk=None):
         """
         Retrieve document content in different formats (JSON, Markdown, HTML).
 

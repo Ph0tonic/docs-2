@@ -83,7 +83,7 @@ def test_api_documents_trashbin_format():
             "descendants": False,
             "cors_proxy": False,
             "comment": False,
-            "content": False,
+            "convert": False,
             "destroy": False,
             "duplicate": False,
             "favorite": False,
