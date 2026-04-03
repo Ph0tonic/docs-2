@@ -73,7 +73,7 @@ We use GitHub Projects to:
 
 ### Before you get started
 
-* Run Docs locally, find detailed instructions in the [README.md](http://README.md)
+* Run Docs locally, find detailed instructions in the [README.md](README.md)
 * Check out the LaSuite [dev handbook](https://suitenumerique.gitbook.io/handbook) to learn our best practices
 * Join our [Matrix community channel](https://matrix.to/#/#docs-official:matrix.org)
 * Reach out to the product manager before working on feature
@@ -109,7 +109,7 @@ All commit messages must follow this format:
 
 * **title**: A short, descriptive title for the change (*) **(less than 80 characters)**
 
-* **blank line after the commit title
+* **blank line after the commit title**
 
 * **description**: Include additional details on why you made the changes (**).
 
