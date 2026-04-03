@@ -144,16 +144,13 @@ jobs:
       - name: Start Docker services
         run: make bootstrap-e2e FLUSH_ARGS='--no-input'
 
-      - name: Restore last-run.json
+      - name: Restore last-run cache
         if: ${{ github.run_attempt > 1 }}
-        uses: dawidd6/action-download-artifact@v6
+        id: restore-last-run
+        uses: actions/cache/restore@v4
         with:
-          name: playwright-instance-last-run-chromium
-          path: docs/src/frontend/apps/e2e/test-results
-          workflow: docs-e2e-instance.yml
-          workflow_conclusion: ""
-          if_no_artifact_found: warn
-        continue-on-error: true
+          path: src/frontend/apps/e2e/test-results/.last-run.json
+          key: playwright-last-run-${{ github.run_id }}-chromium
 
       - name: Run e2e tests
         env:
@@ -168,6 +165,13 @@ jobs:
           fi
           
           yarn e2e:test --project='chromium' $LAST_FAILED_FLAG
+
+      - name: Save last-run cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: src/frontend/apps/e2e/test-results/.last-run.json
+          key: playwright-last-run-${{ github.run_id }}-chromium
 
       - name: Upload last-run artifact
         if: always()
@@ -222,16 +226,13 @@ jobs:
       - name: Start Docker services
         run: make bootstrap-e2e FLUSH_ARGS='--no-input'
 
-      - name: Restore last-run.json
+      - name: Restore last-run cache
         if: ${{ github.run_attempt > 1 }}
-        uses: dawidd6/action-download-artifact@v6
+        id: restore-last-run
+        uses: actions/cache/restore@v4
         with:
-          name: playwright-instance-last-run-other-browser
-          path: docs/src/frontend/apps/e2e/test-results
-          workflow: docs-e2e-instance.yml
-          workflow_conclusion: ""
-          if_no_artifact_found: warn
-        continue-on-error: true
+          path: src/frontend/apps/e2e/test-results/.last-run.json
+          key: playwright-last-run-${{ github.run_id }}-other-browser
 
       - name: Run e2e tests
         env:
@@ -246,6 +247,13 @@ jobs:
           fi
 
           yarn e2e:test --project=firefox --project=webkit $LAST_FAILED_FLAG
+
+      - name: Save last-run cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: src/frontend/apps/e2e/test-results/.last-run.json
+          key: playwright-last-run-${{ github.run_id }}-other-browser
 
       - name: Upload last-run artifact
         if: always()
