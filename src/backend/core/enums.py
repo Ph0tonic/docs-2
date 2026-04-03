@@ -18,6 +18,7 @@ MEDIA_STORAGE_URL_PATTERN = re.compile(
     f"{settings.MEDIA_URL:s}(?P<pk>{UUID_REGEX:s})/"
     f"(?P<attachment>{ATTACHMENTS_FOLDER:s}/{UUID_REGEX:s}(?:-unsafe)?{FILE_EXT_REGEX:s})$"
 )
+CONTENT_STORAGE_URL_PATTERN = re.compile(f"/documents-content/(?P<pk>{UUID_REGEX:s})/")
 MEDIA_STORAGE_URL_EXTRACT = re.compile(
     f"{settings.MEDIA_URL:s}({UUID_REGEX}/{ATTACHMENTS_FOLDER}/{UUID_REGEX}{FILE_EXT_REGEX})"
 )

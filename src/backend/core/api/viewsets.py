@@ -1792,10 +1792,10 @@ class DocumentViewSet(
         # Extract the original URL from the request header
         original_url = request.META.get("HTTP_X_ORIGINAL_URL")
         if not original_url:
-            logger.debug("Missing HTTP_X_ORIGINAL_URL header in subrequest")
+            logger.info("Missing HTTP_X_ORIGINAL_URL header in subrequest")
             raise drf.exceptions.PermissionDenied()
 
-        logger.debug("Original url: '%s'", original_url)
+        logger.info("Original url: '%s'", original_url)
         return urlparse(original_url)
 
     def _auth_get_url_params(self, pattern, fragment):
@@ -1807,7 +1807,7 @@ class DocumentViewSet(
         try:
             return match.groupdict()
         except (ValueError, AttributeError) as exc:
-            logger.debug("Failed to extract parameters from subrequest URL: %s", exc)
+            logger.info("Failed to extract parameters from subrequest URL: %s", exc)
             raise drf.exceptions.PermissionDenied() from exc
 
     @drf.decorators.action(detail=False, methods=["get"], url_path="media-auth")
@@ -1874,6 +1874,41 @@ class DocumentViewSet(
 
         return drf.response.Response("authorized", headers=request.headers, status=200)
 
+    @drf.decorators.action(detail=False, methods=["get"], url_path="content-auth")
+    def content_auth(self, request, *args, **kwargs):
+        """
+        This view is used by an Nginx subrequest to control access to a document's content file.
+
+        When we let the request go through, we compute authorization headers that will be added to
+        the request going through thanks to the nginx auth_request module. The request will then
+        be proxied to the object storage backend who will respond with the file after checking
+        the signature included in headers.
+        """
+        parsed_url = self._auth_get_original_url(request)
+        url_params = self._auth_get_url_params(
+            enums.CONTENT_STORAGE_URL_PATTERN, parsed_url.path
+        )
+
+        try:
+            document = models.Document.objects.get(pk=url_params["pk"])
+        except models.Document.DoesNotExist as exc:
+            logger.info("Document '%s' not found for content-auth", url_params["pk"])
+            raise drf.exceptions.PermissionDenied() from exc
+
+        abilities = document.get_abilities(request.user)
+        if not abilities.get("content_auth"):
+            logger.info(
+                "User '%s' lacks permission for document content '%s'",
+                request.user,
+                url_params["pk"],
+            )
+            raise drf.exceptions.PermissionDenied()
+
+        signed_request = utils.generate_s3_authorization_headers(document.file_key)
+        return drf.response.Response(
+            "authorized", headers=signed_request.headers, status=200
+        )
+
     @drf.decorators.action(detail=True, methods=["get"], url_path="media-check")
     def media_check(self, request, *args, **kwargs):
         """
@@ -1900,7 +1935,7 @@ class DocumentViewSet(
         try:
             head_resp = s3_client.head_object(Bucket=bucket_name, Key=key)
         except ClientError as err:
-            logger.error("Client Error fetching file %s metadata: %s", key, err)
+            logger.info("Client Error fetching file %s metadata: %s", key, err)
             return drf.response.Response(
                 {"detail": "Media not found"},
                 status=drf.status.HTTP_404_NOT_FOUND,

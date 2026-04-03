@@ -95,6 +95,7 @@ def test_api_documents_trashbin_format():
                 "restricted": None,
             },
             "mask": False,
+            "content_auth": False,
             "media_auth": False,
             "media_check": False,
             "move": False,  # Can't move a deleted document

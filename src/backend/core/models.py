@@ -1308,6 +1308,7 @@ class Document(MP_Node, BaseModel):
             "children_create": can_create_children,
             "collaboration_auth": can_get,
             "comment": can_comment,
+            "content_auth": can_get,
             "convert": can_get,
             "cors_proxy": can_get,
             "descendants": can_get,

@@ -6,6 +6,10 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Added
+
+- ⚡️(backend)  access document content using nginx auth_request module
+
 ### Changed
 
 - ♻️(backend) rename documents content endpoint in convert
