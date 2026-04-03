@@ -72,7 +72,6 @@ def test_api_documents_retrieve_anonymous_public_standalone():
         "ancestors_link_role": None,
         "computed_link_reach": document.computed_link_reach,
         "computed_link_role": document.computed_link_role,
-        "content": document.content,
         "created_at": document.created_at.isoformat().replace("+00:00", "Z"),
         "creator": str(document.creator.id),
         "deleted_at": None,
@@ -152,7 +151,6 @@ def test_api_documents_retrieve_anonymous_public_parent():
         "ancestors_link_role": grand_parent.link_role,
         "computed_link_reach": "public",
         "computed_link_role": grand_parent.link_role,
-        "content": document.content,
         "created_at": document.created_at.isoformat().replace("+00:00", "Z"),
         "creator": str(document.creator.id),
         "deleted_at": None,
@@ -265,7 +263,6 @@ def test_api_documents_retrieve_authenticated_unrelated_public_or_authenticated(
         "ancestors_link_role": None,
         "computed_link_reach": document.computed_link_reach,
         "computed_link_role": document.computed_link_role,
-        "content": document.content,
         "created_at": document.created_at.isoformat().replace("+00:00", "Z"),
         "creator": str(document.creator.id),
         "depth": 1,
@@ -352,7 +349,6 @@ def test_api_documents_retrieve_authenticated_public_or_authenticated_parent(rea
         "ancestors_link_role": grand_parent.link_role,
         "computed_link_reach": document.computed_link_reach,
         "computed_link_role": document.computed_link_role,
-        "content": document.content,
         "created_at": document.created_at.isoformat().replace("+00:00", "Z"),
         "creator": str(document.creator.id),
         "depth": 3,
@@ -467,7 +463,6 @@ def test_api_documents_retrieve_authenticated_related_direct():
         "ancestors_link_role": None,
         "computed_link_reach": document.computed_link_reach,
         "computed_link_role": document.computed_link_role,
-        "content": document.content,
         "creator": str(document.creator.id),
         "created_at": document.created_at.isoformat().replace("+00:00", "Z"),
         "deleted_at": None,
@@ -554,7 +549,6 @@ def test_api_documents_retrieve_authenticated_related_parent():
         "ancestors_link_role": None,
         "computed_link_reach": "restricted",
         "computed_link_role": None,
-        "content": document.content,
         "creator": str(document.creator.id),
         "created_at": document.created_at.isoformat().replace("+00:00", "Z"),
         "depth": 3,
@@ -711,7 +705,6 @@ def test_api_documents_retrieve_authenticated_related_team_members(
         "ancestors_link_role": None,
         "computed_link_reach": document.computed_link_reach,
         "computed_link_role": document.computed_link_role,
-        "content": document.content,
         "created_at": document.created_at.isoformat().replace("+00:00", "Z"),
         "creator": str(document.creator.id),
         "deleted_at": None,
@@ -778,7 +771,6 @@ def test_api_documents_retrieve_authenticated_related_team_administrators(
         "ancestors_link_role": None,
         "computed_link_reach": document.computed_link_reach,
         "computed_link_role": document.computed_link_role,
-        "content": document.content,
         "created_at": document.created_at.isoformat().replace("+00:00", "Z"),
         "creator": str(document.creator.id),
         "deleted_at": None,
@@ -845,7 +837,6 @@ def test_api_documents_retrieve_authenticated_related_team_owners(
         "ancestors_link_role": None,
         "computed_link_reach": document.computed_link_reach,
         "computed_link_role": document.computed_link_role,
-        "content": document.content,
         "created_at": document.created_at.isoformat().replace("+00:00", "Z"),
         "creator": str(document.creator.id),
         "deleted_at": None,
@@ -1077,48 +1068,3 @@ def test_api_documents_retrieve_permanently_deleted_related(role, depth):
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Not found."}
-
-
-def test_api_documents_retrieve_without_content():
-    """
-    Test retrieve using without_content query string should remove the content in the response
-    """
-
-    user = factories.UserFactory()
-
-    document = factories.DocumentFactory(creator=user, users=[(user, "owner")])
-
-    client = APIClient()
-    client.force_login(user)
-
-    with mock.patch("core.models.Document.content") as mock_document_content:
-        response = client.get(
-            f"/api/v1.0/documents/{document.id!s}/?without_content=true"
-        )
-
-    assert response.status_code == 200
-
-    payload = response.json()
-    assert "content" not in payload
-    mock_document_content.assert_not_called()
-
-
-def test_api_documents_retrieve_without_content_invalid_value():
-    """
-    Test retrieve using without_content query string but an invalid value
-    should return a 400
-    """
-
-    user = factories.UserFactory()
-
-    document = factories.DocumentFactory(creator=user, users=[(user, "owner")])
-
-    client = APIClient()
-    client.force_login(user)
-
-    response = client.get(
-        f"/api/v1.0/documents/{document.id!s}/?without_content=invalid-value"
-    )
-    assert response.status_code == 400
-
-    assert response.json() == ["Must be a valid boolean."]

@@ -178,7 +178,6 @@ class DocumentLightSerializer(serializers.ModelSerializer):
 class DocumentSerializer(ListDocumentSerializer):
     """Serialize documents with all fields for display in detail views."""
 
-    content = serializers.CharField(required=False)
     websocket = serializers.BooleanField(required=False, write_only=True)
     file = serializers.FileField(
         required=False, write_only=True, allow_null=True, max_length=255
@@ -193,7 +192,6 @@ class DocumentSerializer(ListDocumentSerializer):
             "ancestors_link_role",
             "computed_link_reach",
             "computed_link_role",
-            "content",
             "created_at",
             "creator",
             "deleted_at",
@@ -242,13 +240,6 @@ class DocumentSerializer(ListDocumentSerializer):
         if request:
             if request.method == "POST":
                 fields["id"].read_only = False
-            if (
-                serializers.BooleanField().to_internal_value(
-                    request.query_params.get("without_content", False)
-                )
-                is True
-            ):
-                del fields["content"]
 
         return fields
 
@@ -262,18 +253,6 @@ class DocumentSerializer(ListDocumentSerializer):
                 raise serializers.ValidationError(
                     "A document with this ID already exists. You cannot override it."
                 )
-
-        return value
-
-    def validate_content(self, value):
-        """Validate the content field."""
-        if not value:
-            return None
-
-        try:
-            b64decode(value, validate=True)
-        except binascii.Error as err:
-            raise serializers.ValidationError("Invalid base64 content.") from err
 
         return value
 
@@ -309,53 +288,6 @@ class DocumentSerializer(ListDocumentSerializer):
         if not validated_data:
             return instance  # No data provided, skip the update
         return super().update(instance, validated_data)
-
-    def save(self, **kwargs):
-        """
-        Process the content field to extract attachment keys and update the document's
-        "attachments" field for access control.
-        """
-        content = self.validated_data.get("content", "")
-        extracted_attachments = set(utils.extract_attachments(content))
-
-        existing_attachments = (
-            set(self.instance.attachments or []) if self.instance else set()
-        )
-        new_attachments = extracted_attachments - existing_attachments
-
-        if new_attachments:
-            attachments_documents = (
-                models.Document.objects.filter(
-                    attachments__overlap=list(new_attachments)
-                )
-                .only("path", "attachments")
-                .order_by("path")
-            )
-
-            user = self.context["request"].user
-            readable_per_se_paths = (
-                models.Document.objects.readable_per_se(user)
-                .order_by("path")
-                .values_list("path", flat=True)
-            )
-            readable_attachments_paths = utils.filter_descendants(
-                [doc.path for doc in attachments_documents],
-                readable_per_se_paths,
-                skip_sorting=True,
-            )
-
-            readable_attachments = set()
-            for document in attachments_documents:
-                if document.path not in readable_attachments_paths:
-                    continue
-                readable_attachments.update(set(document.attachments) & new_attachments)
-
-            # Update attachments with readable keys
-            self.validated_data["attachments"] = list(
-                existing_attachments | readable_attachments
-            )
-
-        return super().save(**kwargs)
 
 
 class DocumentContentSerializer(serializers.Serializer):
