@@ -83,17 +83,17 @@ def test_index_with_both_bounds_success():
             lower_time_bound=lower_time_bound.isoformat(),
             upper_time_bound=upper_time_bound.isoformat(),
         )
-    all_push_call_args = [
+    pushed_document_ids = [
         document["id"]
         for call_arg_list in mock_push.call_args_list
         for document in call_arg_list.args[0]
     ]
 
     # Only documents in window should be indexed
-    assert str(document_too_early.id) not in all_push_call_args
-    assert str(document_in_window_1.id) in all_push_call_args
-    assert str(document_in_window_2.id) in all_push_call_args
-    assert str(document_too_late.id) not in all_push_call_args
+    assert str(document_too_early.id) not in pushed_document_ids
+    assert str(document_in_window_1.id) in pushed_document_ids
+    assert str(document_in_window_2.id) in pushed_document_ids
+    assert str(document_too_late.id) not in pushed_document_ids
 
     # Checkpoint should be set to last indexed document's updated_at
     assert (
@@ -150,13 +150,14 @@ def test_index_with_crash_recovery():
     # First run: simulate crash on batch 3
     with mock.patch.object(FindDocumentIndexer, "push") as mock_push:
         mock_push.side_effect = push_with_failure_on_batch_2
-        call_command(
-            "index",
-            batch_size=batch_size,
-            lower_time_bound=lower_time_bound.isoformat(),
-            upper_time_bound=upper_time_bound.isoformat(),
-        )
-    all_push_call_args = [
+        with pytest.raises(CommandError):
+            call_command(
+                "index",
+                batch_size=batch_size,
+                lower_time_bound=lower_time_bound.isoformat(),
+                upper_time_bound=upper_time_bound.isoformat(),
+            )
+    pushed_document_ids = [
         document["id"]
         for call_arg_list in mock_push.call_args_list
         for document in call_arg_list.args[0]
@@ -167,13 +168,13 @@ def test_index_with_crash_recovery():
     assert checkpoint == documents[3].updated_at.isoformat()
     # first 2 batches should be indexed successfully
     for i in range(0, 4):
-        assert str(documents[i].id) in all_push_call_args
+        assert str(documents[i].id) in pushed_document_ids
     # next batch should have been attempted but failed
     for i in range(4, 6):
-        assert str(documents[i].id) in all_push_call_args
+        assert str(documents[i].id) in pushed_document_ids
     # last batches indexing should not have been attempted
     for i in range(6, 8):
-        assert str(documents[i].id) not in all_push_call_args
+        assert str(documents[i].id) not in pushed_document_ids
 
     # Second run: resume from checkpoint
     with mock.patch.object(FindDocumentIndexer, "push") as mock_push:
@@ -183,7 +184,7 @@ def test_index_with_crash_recovery():
             lower_time_bound=checkpoint,
             upper_time_bound=upper_time_bound.isoformat(),
         )
-    all_push_call_args = [
+    pushed_document_ids = [
         document["id"]
         for call_arg_list in mock_push.call_args_list
         for document in call_arg_list.args[0]
@@ -193,12 +194,12 @@ def test_index_with_crash_recovery():
     # except the last document of the last batch which is on the checkpoint boundary
     # -> doc 0, 1 and 2
     for i in range(0, 3):
-        assert str(documents[i].id) not in all_push_call_args
+        assert str(documents[i].id) not in pushed_document_ids
     # next batches should be indexed including the document at the checkpoint boundary
     # which has already been indexed and is re-indexed
     # -> doc 3 to the end
     for i in range(3, 8):
-        assert str(documents[i].id) in all_push_call_args
+        assert str(documents[i].id) in pushed_document_ids
 
 
 @pytest.mark.django_db
@@ -211,3 +212,63 @@ def test_index_improperly_configured(indexer_settings):
         call_command("index")
 
     assert str(err.value) == "The indexer is not enabled or properly configured."
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures("indexer_settings")
+def test_index_with_async_flag(settings):
+    """Test the command `index` with --async=True runs task asynchronously."""
+    cache.clear()
+    lower_time_bound = datetime(2024, 2, 1, tzinfo=timezone.utc)
+
+    with mock.patch(
+        "core.management.commands.index.batch_document_indexer_task"
+    ) as mock_task:
+        with mock.patch.object(FindDocumentIndexer, "push") as mock_push:
+            call_command(
+                "index", async_mode=True, lower_time_bound=lower_time_bound.isoformat()
+            )
+    # push not be called synchronously
+    mock_push.assert_not_called()
+    # task called asynchronously
+    mock_task.apply_async.assert_called_once_with(
+        kwargs={
+            "lower_time_bound": lower_time_bound.isoformat(),
+            "upper_time_bound": None,
+            "batch_size": settings.SEARCH_INDEXER_BATCH_SIZE,
+            "crash_safe_mode": True,
+        }
+    )
+
+    assert cache.get(BULK_INDEXER_CHECKPOINT) is None
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures("indexer_settings")
+def test_index_without_async_flag():
+    """Test the command `index` with --async=False runs synchronously."""
+    cache.clear()
+    lower_time_bound = datetime(2024, 2, 1, tzinfo=timezone.utc)
+
+    document = create_document_with_updated_at(
+        updated_at=lower_time_bound + timedelta(days=10)
+    )
+
+    with mock.patch(
+        "core.management.commands.index.batch_document_indexer_task"
+    ) as mock_task:
+        with mock.patch.object(FindDocumentIndexer, "push") as mock_push:
+            call_command(
+                "index", async_mode=False, lower_time_bound=lower_time_bound.isoformat()
+            )
+    # push is called synchronously to index the document
+    pushed_document_ids = [
+        document["id"]
+        for call_arg_list in mock_push.call_args_list
+        for document in call_arg_list.args[0]
+    ]
+    assert str(document.id) in pushed_document_ids
+    # async task not called
+    mock_task.apply_async.assert_not_called()
+
+    assert cache.get(BULK_INDEXER_CHECKPOINT) == document.updated_at.isoformat()
