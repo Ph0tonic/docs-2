@@ -310,7 +310,13 @@ test.describe('Doc Comments', () => {
     // Anonymous user can see and add comments
     await otherPage.getByRole('button', { name: 'Logout' }).click();
 
-    await otherPage.waitForTimeout(1500);
+    await expect(
+      otherPage
+        .getByRole('button', { name: process.env.SIGN_IN_EL_TRIGGER })
+        .first(),
+    ).toBeVisible({
+      timeout: 10000,
+    });
 
     await otherPage.goto(urlCommentDoc);
 
